@@ -21,6 +21,11 @@ export interface TradingSetup {
     amount: number;
     status: 'planned' | 'executed';
   }>;
+  dcaExits?: Array<{
+    price: number;
+    percentage: number;
+    status: 'planned' | 'executed';
+  }>;
   marketPrice?: number;
   priceChange24h?: number;
   lastPriceUpdate?: string;

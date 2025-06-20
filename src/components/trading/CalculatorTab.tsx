@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { FactorAnalysis } from './FactorAnalysis';
 import { DCAPlanner } from './DCAPlanner';
@@ -40,6 +39,12 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
     status: 'planned' as 'planned' | 'executed'
   })));
 
+  const [dcaExits, setDcaExits] = useState(Array(4).fill(null).map(() => ({
+    price: 0,
+    percentage: 0,
+    status: 'planned' as 'planned' | 'executed'
+  })));
+
   const [calculations, setCalculations] = useState({
     probability: 0,
     totalFactors: 0,
@@ -70,6 +75,11 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
         setDcaEntries(setupToEdit.dcaEntries || Array(4).fill(null).map(() => ({
           price: 0,
           amount: 0,
+          status: 'planned' as const
+        })));
+        setDcaExits(setupToEdit.dcaExits || Array(4).fill(null).map(() => ({
+          price: 0,
+          percentage: 0,
           status: 'planned' as const
         })));
       }
@@ -155,7 +165,8 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
       createdDate: editingSetupId ? setups.find(s => s.id === editingSetupId)?.createdDate || new Date().toISOString() : new Date().toISOString(),
       lastUpdated: new Date().toISOString(),
       factors: checkedFactors,
-      dcaEntries: dcaEntries
+      dcaEntries: dcaEntries,
+      dcaExits: dcaExits
     };
 
     // Check for executed entries
@@ -203,6 +214,11 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
       amount: 0,
       status: 'planned' as const
     })));
+    setDcaExits(Array(4).fill(null).map(() => ({
+      price: 0,
+      percentage: 0,
+      status: 'planned' as const
+    })));
     if (onClearEdit) {
       onClearEdit();
     }
@@ -231,6 +247,8 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
         <DCAPlanner 
           entries={dcaEntries} 
           setEntries={setDcaEntries}
+          exits={dcaExits}
+          setExits={setDcaExits}
           portfolioValue={portfolioValue}
           calculations={calculations}
         />
