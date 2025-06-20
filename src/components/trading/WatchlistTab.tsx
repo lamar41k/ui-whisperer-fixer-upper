@@ -1,15 +1,22 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TradingSetup } from '@/hooks/useTradingData';
 
 interface WatchlistTabProps {
   setups: TradingSetup[];
   deleteSetup: (id: string) => void;
+  updateSetup?: (setup: TradingSetup) => void;
 }
 
-export const WatchlistTab: React.FC<WatchlistTabProps> = ({ setups, deleteSetup }) => {
+export const WatchlistTab: React.FC<WatchlistTabProps> = ({ setups, deleteSetup, updateSetup }) => {
   const [filter, setFilter] = useState<string>('all');
+  const [editingSetup, setEditingSetup] = useState<TradingSetup | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   const filteredSetups = setups.filter(setup => 
     filter === 'all' || setup.status === filter
@@ -18,6 +25,33 @@ export const WatchlistTab: React.FC<WatchlistTabProps> = ({ setups, deleteSetup 
   const handleDelete = (id: string) => {
     if (confirm('Delete this setup? This cannot be undone.')) {
       deleteSetup(id);
+    }
+  };
+
+  const handleEdit = (setup: TradingSetup) => {
+    setEditingSetup({ ...setup });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (editingSetup && updateSetup) {
+      updateSetup({
+        ...editingSetup,
+        lastUpdated: new Date().toISOString()
+      });
+      setIsEditDialogOpen(false);
+      setEditingSetup(null);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditDialogOpen(false);
+    setEditingSetup(null);
+  };
+
+  const updateEditField = (field: keyof TradingSetup, value: any) => {
+    if (editingSetup) {
+      setEditingSetup(prev => prev ? { ...prev, [field]: value } : null);
     }
   };
 
@@ -84,7 +118,12 @@ export const WatchlistTab: React.FC<WatchlistTabProps> = ({ setups, deleteSetup 
                   </span>
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="ghost" className="text-blue-400 hover:text-blue-300">
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    className="text-blue-400 hover:text-blue-300"
+                    onClick={() => handleEdit(setup)}
+                  >
                     Edit
                   </Button>
                   <Button 
@@ -133,6 +172,115 @@ export const WatchlistTab: React.FC<WatchlistTabProps> = ({ setups, deleteSetup 
           ))
         )}
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="bg-gray-800 border-cyan-500/30 text-white max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-cyan-400">Edit Setup</DialogTitle>
+          </DialogHeader>
+          
+          {editingSetup && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-gray-300">Symbol</Label>
+                  <Input
+                    value={editingSetup.symbol}
+                    onChange={(e) => updateEditField('symbol', e.target.value.toUpperCase())}
+                    className="bg-gray-600/50 border-gray-500"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-300">Direction</Label>
+                  <Select value={editingSetup.direction} onValueChange={(value) => updateEditField('direction', value)}>
+                    <SelectTrigger className="bg-gray-600/50 border-gray-500">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="LONG">Long</SelectItem>
+                      <SelectItem value="SHORT">Short</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-gray-300">Target Price</Label>
+                  <Input
+                    type="number"
+                    step="0.0001"
+                    value={editingSetup.targetPrice}
+                    onChange={(e) => updateEditField('targetPrice', parseFloat(e.target.value) || 0)}
+                    className="bg-gray-600/50 border-gray-500"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-300">Stop Price</Label>
+                  <Input
+                    type="number"
+                    step="0.0001"
+                    value={editingSetup.stopPrice}
+                    onChange={(e) => updateEditField('stopPrice', parseFloat(e.target.value) || 0)}
+                    className="bg-gray-600/50 border-gray-500"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-300">Total Allocation</Label>
+                  <Input
+                    type="number"
+                    value={editingSetup.totalAllocation}
+                    onChange={(e) => updateEditField('totalAllocation', parseFloat(e.target.value) || 0)}
+                    className="bg-gray-600/50 border-gray-500"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-300">Priority</Label>
+                  <Select value={editingSetup.priority} onValueChange={(value) => updateEditField('priority', value)}>
+                    <SelectTrigger className="bg-gray-600/50 border-gray-500">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-gray-300">Status</Label>
+                  <Select value={editingSetup.status} onValueChange={(value) => updateEditField('status', value)}>
+                    <SelectTrigger className="bg-gray-600/50 border-gray-500">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="monitoring">Monitoring</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="executed">Executed</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-gray-300">Setup Name</Label>
+                  <Input
+                    value={editingSetup.name}
+                    onChange={(e) => updateEditField('name', e.target.value)}
+                    className="bg-gray-600/50 border-gray-500"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={handleCancelEdit}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveEdit} className="bg-cyan-500 hover:bg-cyan-600">
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

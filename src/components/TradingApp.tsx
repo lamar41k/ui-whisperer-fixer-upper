@@ -13,6 +13,7 @@ export const TradingApp = () => {
     setups, 
     portfolio, 
     saveSetup, 
+    updateSetup,
     deleteSetup, 
     updatePosition, 
     closePosition 
@@ -59,6 +60,7 @@ export const TradingApp = () => {
               <WatchlistTab 
                 setups={setups}
                 deleteSetup={deleteSetup}
+                updateSetup={updateSetup}
               />
             </TabsContent>
 

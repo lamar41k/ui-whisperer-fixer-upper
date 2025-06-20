@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 
 export interface TradingSetup {
@@ -99,6 +98,10 @@ export const useTradingData = () => {
     }
   };
 
+  const updateSetup = (setupData: TradingSetup) => {
+    setSetups(prev => prev.map(s => s.id === setupData.id ? setupData : s));
+  };
+
   const deleteSetup = (id: string) => {
     setSetups(prev => prev.filter(s => s.id !== id));
     // Also remove associated portfolio positions
@@ -138,6 +141,7 @@ export const useTradingData = () => {
     setups,
     portfolio,
     saveSetup,
+    updateSetup,
     deleteSetup,
     updatePosition,
     closePosition,
