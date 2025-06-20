@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -9,11 +8,11 @@ interface FactorAnalysisProps {
 
 export const FactorAnalysis: React.FC<FactorAnalysisProps> = ({ checkedFactors, setCheckedFactors }) => {
   const toggleFactor = (factorId: string) => {
-    setCheckedFactors(prev => 
-      prev.includes(factorId) 
-        ? prev.filter(f => f !== factorId)
-        : [...prev, factorId]
-    );
+    if (checkedFactors.includes(factorId)) {
+      setCheckedFactors(checkedFactors.filter(f => f !== factorId));
+    } else {
+      setCheckedFactors([...checkedFactors, factorId]);
+    }
   };
 
   const patternFactors = [
