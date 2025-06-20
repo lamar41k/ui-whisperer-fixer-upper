@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PortfolioTab } from './trading/PortfolioTab';
@@ -50,6 +51,30 @@ export const TradingApp = () => {
     setEditingSetupId(undefined);
   };
 
+  const handleSyncPhemexPositions = (newPositions: any[]) => {
+    // Add new positions to portfolio
+    newPositions.forEach(position => {
+      // Create a portfolio position from Phemex data
+      saveSetup({
+        id: position.id,
+        name: `Phemex ${position.symbol} ${position.direction}`,
+        symbol: position.symbol,
+        direction: position.direction,
+        targetPrice: position.targetPrice,
+        stopPrice: position.stopPrice,
+        totalAllocation: position.size,
+        probability: 70, // Default probability for synced positions
+        totalFactors: 5, // Default factors
+        priority: 'medium' as const,
+        status: 'executed' as const,
+        tags: ['phemex', 'synced'],
+        createdDate: position.openDate,
+        lastUpdated: new Date().toISOString(),
+        marketPrice: position.currentPrice
+      }, position);
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
       <div className="container mx-auto p-4">
@@ -88,6 +113,7 @@ export const TradingApp = () => {
                 updatePosition={updatePosition}
                 closePosition={closePosition}
                 updateMarketPrices={updateMarketPrices}
+                onSyncPhemexPositions={handleSyncPhemexPositions}
               />
             </TabsContent>
 

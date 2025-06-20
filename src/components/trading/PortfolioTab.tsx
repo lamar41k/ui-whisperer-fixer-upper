@@ -1,9 +1,9 @@
-
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, TrendingUp, TrendingDown } from 'lucide-react';
 import { PortfolioPosition } from '@/hooks/useTradingData';
 import { useCryptoPrices } from '@/hooks/useCryptoPrices';
+import { PhemexSync } from './PhemexSync';
 
 interface PortfolioTabProps {
   portfolio: PortfolioPosition[];
@@ -12,6 +12,7 @@ interface PortfolioTabProps {
   updatePosition: (id: string, currentPrice: number) => void;
   closePosition: (id: string, exitPrice: number) => void;
   updateMarketPrices: (priceData: Record<string, { price: number; change24h: number; lastUpdated: string }>) => void;
+  onSyncPhemexPositions?: (positions: PortfolioPosition[]) => void;
 }
 
 export const PortfolioTab: React.FC<PortfolioTabProps> = ({
@@ -20,7 +21,8 @@ export const PortfolioTab: React.FC<PortfolioTabProps> = ({
   setPortfolioValue,
   updatePosition,
   closePosition,
-  updateMarketPrices
+  updateMarketPrices,
+  onSyncPhemexPositions
 }) => {
   const openPositions = portfolio.filter(p => p.status === 'open');
   const { refreshPrices, isLoading, lastUpdated, error } = useCryptoPrices();
@@ -38,9 +40,6 @@ export const PortfolioTab: React.FC<PortfolioTabProps> = ({
     const symbols = openPositions.map(pos => pos.symbol);
     if (symbols.length > 0) {
       await refreshPrices(symbols);
-      // The hook will update prices, we need to propagate to the main state
-      const priceData: Record<string, { price: number; change24h: number; lastUpdated: string }> = {};
-      // This will be handled by the parent component
     }
   };
 
@@ -64,6 +63,12 @@ export const PortfolioTab: React.FC<PortfolioTabProps> = ({
     const value = parseFloat(newValue || '');
     if (!isNaN(value) && value > 0) {
       setPortfolioValue(value);
+    }
+  };
+
+  const handleSyncPhemexPositions = (newPositions: PortfolioPosition[]) => {
+    if (onSyncPhemexPositions) {
+      onSyncPhemexPositions(newPositions);
     }
   };
 
@@ -108,6 +113,12 @@ export const PortfolioTab: React.FC<PortfolioTabProps> = ({
         </div>
       </div>
 
+      {/* Phemex Sync Section */}
+      <PhemexSync 
+        onSyncPositions={handleSyncPhemexPositions}
+        existingPositions={portfolio}
+      />
+
       {/* Price Update Section */}
       <div className="bg-gray-700/50 rounded-lg p-4 border border-cyan-500/30">
         <div className="flex items-center justify-between">
@@ -146,6 +157,8 @@ export const PortfolioTab: React.FC<PortfolioTabProps> = ({
           openPositions.map(position => {
             const pnl = calculatePnL(position);
             const priceChange = position.priceChange24h || 0;
+            const isPhemexPosition = position.id.startsWith('phemex-');
+            
             return (
               <div key={position.id} className="bg-gray-700/50 rounded-lg p-4 border border-cyan-500/30">
                 <div className="flex justify-between items-start mb-4">
@@ -154,6 +167,11 @@ export const PortfolioTab: React.FC<PortfolioTabProps> = ({
                       <h4 className="text-lg font-semibold text-cyan-400">
                         {position.symbol} {position.direction}
                       </h4>
+                      {isPhemexPosition && (
+                        <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded">
+                          Phemex
+                        </span>
+                      )}
                       {priceChange !== 0 && (
                         <div className={`flex items-center gap-1 text-sm ${priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {priceChange >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}

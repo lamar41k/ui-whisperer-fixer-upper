@@ -104,6 +104,30 @@ export const usePhemex = () => {
     }
   }, [isConnected, refreshData]);
 
+  const syncPositionsToPortfolio = useCallback(() => {
+    if (!positions.length) return [];
+
+    return positions
+      .filter(pos => pos.size > 0) // Only active positions
+      .map(pos => ({
+        id: `phemex-${pos.symbol}`,
+        setupId: undefined,
+        symbol: pos.symbol,
+        direction: pos.side === 'Buy' ? 'LONG' as const : 'SHORT' as const,
+        entryPrice: pos.entryPrice,
+        currentPrice: pos.markPrice,
+        targetPrice: pos.markPrice * (pos.side === 'Buy' ? 1.1 : 0.9), // Default 10% target
+        stopPrice: pos.markPrice * (pos.side === 'Buy' ? 0.95 : 1.05), // Default 5% stop
+        size: pos.value,
+        openDate: new Date().toISOString(),
+        status: 'open' as const,
+        lastUpdated: new Date().toISOString(),
+        marketPrice: pos.markPrice,
+        priceChange24h: 0,
+        lastPriceUpdate: new Date().toISOString()
+      }));
+  }, [positions]);
+
   return {
     isConnected,
     isLoading,
@@ -115,6 +139,7 @@ export const usePhemex = () => {
     connect,
     disconnect,
     refreshData,
-    placeOrder
+    placeOrder,
+    syncPositionsToPortfolio
   };
 };
