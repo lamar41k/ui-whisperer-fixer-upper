@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 
 interface LiveAnalysisProps {
@@ -9,6 +9,11 @@ interface LiveAnalysisProps {
   canSave: boolean;
   onSave: () => void;
   onClear: () => void;
+  dcaEntries: Array<{
+    price: number;
+    amount: number;
+    status: 'planned' | 'executed';
+  }>;
 }
 
 export const LiveAnalysis: React.FC<LiveAnalysisProps> = ({
@@ -17,8 +22,54 @@ export const LiveAnalysis: React.FC<LiveAnalysisProps> = ({
   formData,
   canSave,
   onSave,
-  onClear
+  onClear,
+  dcaEntries
 }) => {
+  const [selectedEntry, setSelectedEntry] = useState(1);
+
+  const calculateScenario = (upToEntry: number) => {
+    const relevantEntries = dcaEntries.slice(0, upToEntry).filter(entry => entry.price > 0 && entry.amount > 0);
+    
+    if (relevantEntries.length === 0) {
+      return {
+        averageEntry: 0,
+        totalDeployed: 0,
+        potentialProfit: 0,
+        potentialLoss: 0,
+        riskReward: 0
+      };
+    }
+
+    const totalDeployed = relevantEntries.reduce((sum, entry) => sum + entry.amount, 0);
+    const weightedSum = relevantEntries.reduce((sum, entry) => sum + (entry.price * entry.amount), 0);
+    const averageEntry = totalDeployed > 0 ? weightedSum / totalDeployed : 0;
+
+    let potentialProfit = 0;
+    let potentialLoss = 0;
+    
+    if (averageEntry > 0 && formData.targetPrice > 0 && formData.stopPrice > 0 && totalDeployed > 0) {
+      if (formData.direction === 'long') {
+        potentialProfit = ((formData.targetPrice - averageEntry) / averageEntry) * totalDeployed;
+        potentialLoss = ((averageEntry - formData.stopPrice) / averageEntry) * totalDeployed;
+      } else {
+        potentialProfit = ((averageEntry - formData.targetPrice) / averageEntry) * totalDeployed;
+        potentialLoss = ((formData.stopPrice - averageEntry) / averageEntry) * totalDeployed;
+      }
+    }
+
+    const riskReward = potentialLoss > 0 ? potentialProfit / potentialLoss : 0;
+
+    return {
+      averageEntry,
+      totalDeployed,
+      potentialProfit,
+      potentialLoss,
+      riskReward
+    };
+  };
+
+  const scenarioCalc = calculateScenario(selectedEntry);
+
   const getConvictionLevel = () => {
     if (calculations.totalFactors < 3) return { level: 'Need 3+ Factors', color: 'text-red-400', bg: 'bg-red-500/20' };
     if (calculations.probability < 70) return { level: 'Low Conviction', color: 'text-red-400', bg: 'bg-red-500/20' };
@@ -27,13 +78,36 @@ export const LiveAnalysis: React.FC<LiveAnalysisProps> = ({
   };
 
   const conviction = getConvictionLevel();
-  const monthlyImpact = (calculations.potentialProfit / 2000) * 100;
+  const monthlyImpact = (scenarioCalc.potentialProfit / 2000) * 100;
 
   return (
     <div className="bg-gray-700/50 rounded-lg p-6 border border-cyan-500/30 space-y-6">
       <div className="text-center">
         <h3 className="text-lg font-semibold text-cyan-400 mb-2">Live Analysis</h3>
         <p className="text-sm text-gray-400">Real-time probability & profit</p>
+      </div>
+
+      {/* Entry Scenario Toggle */}
+      <div className="space-y-3">
+        <h4 className="font-semibold text-cyan-400">📊 Entry Scenario</h4>
+        <div className="grid grid-cols-4 gap-1">
+          {[1, 2, 3, 4].map(entryNum => (
+            <button
+              key={entryNum}
+              onClick={() => setSelectedEntry(entryNum)}
+              className={`px-2 py-1 text-xs rounded transition-colors ${
+                selectedEntry === entryNum
+                  ? 'bg-cyan-500/30 text-cyan-400 border border-cyan-500/50'
+                  : 'bg-gray-600/30 text-gray-400 border border-gray-500/30 hover:bg-gray-600/50'
+              }`}
+            >
+              Entry {entryNum}
+            </button>
+          ))}
+        </div>
+        <div className="text-xs text-gray-400 text-center">
+          What if up to Entry {selectedEntry} happens?
+        </div>
       </div>
 
       {/* Probability Display */}
@@ -76,38 +150,38 @@ export const LiveAnalysis: React.FC<LiveAnalysisProps> = ({
 
       {/* Position Analysis */}
       <div className="space-y-3">
-        <h4 className="font-semibold text-cyan-400">💰 Position Analysis</h4>
+        <h4 className="font-semibold text-cyan-400">💰 Position Analysis (Entry {selectedEntry})</h4>
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-gray-400">Average Entry:</span>
-            <span className="text-white">${calculations.averageEntry.toFixed(2)}</span>
+            <span className="text-white">${scenarioCalc.averageEntry.toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-400">Total Allocation:</span>
-            <span className="text-white">${formData.totalAllocation.toLocaleString()}</span>
+            <span className="text-gray-400">Total Deployed:</span>
+            <span className="text-white">${scenarioCalc.totalDeployed.toLocaleString()}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-400">Portfolio %:</span>
-            <span className="text-white">{((formData.totalAllocation / portfolioValue) * 100).toFixed(1)}%</span>
+            <span className="text-white">{((scenarioCalc.totalDeployed / portfolioValue) * 100).toFixed(1)}%</span>
           </div>
         </div>
       </div>
 
       {/* Risk/Reward */}
       <div className="space-y-3">
-        <h4 className="font-semibold text-cyan-400">📈 Risk/Reward</h4>
+        <h4 className="font-semibold text-cyan-400">📈 Risk/Reward (Entry {selectedEntry})</h4>
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-gray-400">Potential Profit:</span>
-            <span className="text-green-400">${calculations.potentialProfit.toFixed(2)}</span>
+            <span className="text-green-400">${scenarioCalc.potentialProfit.toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-400">Potential Loss:</span>
-            <span className="text-red-400">${Math.abs(calculations.potentialLoss).toFixed(2)}</span>
+            <span className="text-red-400">${Math.abs(scenarioCalc.potentialLoss).toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-400">Risk/Reward:</span>
-            <span className="text-white">{calculations.riskReward.toFixed(1)}:1</span>
+            <span className="text-white">{scenarioCalc.riskReward.toFixed(1)}:1</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-400">Monthly Goal:</span>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { FactorAnalysis } from './FactorAnalysis';
 import { DCAPlanner } from './DCAPlanner';
@@ -198,6 +197,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({ portfolioValue, sa
           canSave={canSave}
           onSave={handleSave}
           onClear={handleClear}
+          dcaEntries={dcaEntries}
         />
       </div>
     </div>
