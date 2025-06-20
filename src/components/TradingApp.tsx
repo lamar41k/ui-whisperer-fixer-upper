@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PortfolioTab } from './trading/PortfolioTab';
@@ -6,6 +5,7 @@ import { WatchlistTab } from './trading/WatchlistTab';
 import { CalculatorTab } from './trading/CalculatorTab';
 import { useTradingData } from '@/hooks/useTradingData';
 import { useCryptoPrices } from '@/hooks/useCryptoPrices';
+import { PhemexIndicator } from './trading/PhemexIndicator';
 
 export const TradingApp = () => {
   const [activeTab, setActiveTab] = useState('portfolio');
@@ -56,10 +56,13 @@ export const TradingApp = () => {
         <div className="bg-gray-800/50 backdrop-blur-sm rounded-lg border border-cyan-500/30 p-6">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-2xl font-bold text-cyan-400">Trading System</h1>
-            <div className="text-right">
-              <div className="text-sm text-gray-400">Portfolio Value</div>
-              <div className="text-xl font-bold text-cyan-400">
-                ${portfolioValue.toLocaleString()}
+            <div className="flex items-center gap-4">
+              <PhemexIndicator />
+              <div className="text-right">
+                <div className="text-sm text-gray-400">Portfolio Value</div>
+                <div className="text-xl font-bold text-cyan-400">
+                  ${portfolioValue.toLocaleString()}
+                </div>
               </div>
             </div>
           </div>
