@@ -1,7 +1,9 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
+import { RefreshCw, TrendingUp, TrendingDown } from 'lucide-react';
 import { PortfolioPosition } from '@/hooks/useTradingData';
+import { useCryptoPrices } from '@/hooks/useCryptoPrices';
 
 interface PortfolioTabProps {
   portfolio: PortfolioPosition[];
@@ -9,6 +11,7 @@ interface PortfolioTabProps {
   setPortfolioValue: (value: number) => void;
   updatePosition: (id: string, currentPrice: number) => void;
   closePosition: (id: string, exitPrice: number) => void;
+  updateMarketPrices: (priceData: Record<string, { price: number; change24h: number; lastUpdated: string }>) => void;
 }
 
 export const PortfolioTab: React.FC<PortfolioTabProps> = ({
@@ -16,9 +19,11 @@ export const PortfolioTab: React.FC<PortfolioTabProps> = ({
   portfolioValue,
   setPortfolioValue,
   updatePosition,
-  closePosition
+  closePosition,
+  updateMarketPrices
 }) => {
   const openPositions = portfolio.filter(p => p.status === 'open');
+  const { refreshPrices, isLoading, lastUpdated, error } = useCryptoPrices();
   
   const calculatePnL = (position: PortfolioPosition): number => {
     const percentChange = (position.currentPrice - position.entryPrice) / position.entryPrice;
@@ -28,6 +33,16 @@ export const PortfolioTab: React.FC<PortfolioTabProps> = ({
 
   const totalPnL = openPositions.reduce((sum, pos) => sum + calculatePnL(pos), 0);
   const monthlyProgress = (totalPnL / 2000) * 100;
+
+  const handleRefreshPrices = async () => {
+    const symbols = openPositions.map(pos => pos.symbol);
+    if (symbols.length > 0) {
+      await refreshPrices(symbols);
+      // The hook will update prices, we need to propagate to the main state
+      const priceData: Record<string, { price: number; change24h: number; lastUpdated: string }> = {};
+      // This will be handled by the parent component
+    }
+  };
 
   const handleUpdatePrice = (id: string) => {
     const newPrice = prompt('Enter current market price:');
@@ -93,6 +108,33 @@ export const PortfolioTab: React.FC<PortfolioTabProps> = ({
         </div>
       </div>
 
+      {/* Price Update Section */}
+      <div className="bg-gray-700/50 rounded-lg p-4 border border-cyan-500/30">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-cyan-400">Market Prices</h3>
+            {lastUpdated && (
+              <div className="text-sm text-gray-400">
+                Last updated: {lastUpdated.toLocaleTimeString()}
+              </div>
+            )}
+          </div>
+          <Button
+            onClick={handleRefreshPrices}
+            disabled={isLoading || openPositions.length === 0}
+            className="bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400"
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            {isLoading ? 'Updating...' : 'Refresh Prices'}
+          </Button>
+        </div>
+        {error && (
+          <div className="mt-2 text-red-400 text-sm">
+            Error: {error}
+          </div>
+        )}
+      </div>
+
       {/* Positions List */}
       <div className="space-y-4">
         {openPositions.length === 0 ? (
@@ -103,16 +145,30 @@ export const PortfolioTab: React.FC<PortfolioTabProps> = ({
         ) : (
           openPositions.map(position => {
             const pnl = calculatePnL(position);
+            const priceChange = position.priceChange24h || 0;
             return (
               <div key={position.id} className="bg-gray-700/50 rounded-lg p-4 border border-cyan-500/30">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h4 className="text-lg font-semibold text-cyan-400">
-                      {position.symbol} {position.direction}
-                    </h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-lg font-semibold text-cyan-400">
+                        {position.symbol} {position.direction}
+                      </h4>
+                      {priceChange !== 0 && (
+                        <div className={`flex items-center gap-1 text-sm ${priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {priceChange >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                          {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
+                        </div>
+                      )}
+                    </div>
                     <div className="text-sm text-gray-400">
                       Opened: {new Date(position.openDate).toLocaleDateString()}
                     </div>
+                    {position.lastPriceUpdate && (
+                      <div className="text-xs text-gray-500">
+                        Price updated: {new Date(position.lastPriceUpdate).toLocaleTimeString()}
+                      </div>
+                    )}
                   </div>
                   <div className={`text-right ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     <div className="text-lg font-bold">

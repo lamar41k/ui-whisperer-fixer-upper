@@ -21,6 +21,9 @@ export interface TradingSetup {
     amount: number;
     status: 'planned' | 'executed';
   }>;
+  marketPrice?: number;
+  priceChange24h?: number;
+  lastPriceUpdate?: string;
 }
 
 export interface PortfolioPosition {
@@ -38,6 +41,9 @@ export interface PortfolioPosition {
   exitPrice?: number;
   status: 'open' | 'closed';
   lastUpdated?: string;
+  marketPrice?: number;
+  priceChange24h?: number;
+  lastPriceUpdate?: string;
 }
 
 const INITIAL_PORTFOLIO_VALUE = 14766;
@@ -129,6 +135,39 @@ export const useTradingData = () => {
     ));
   };
 
+  const updateMarketPrices = (priceData: Record<string, { price: number; change24h: number; lastUpdated: string }>) => {
+    const now = new Date().toISOString();
+    
+    // Update setup prices
+    setSetups(prev => prev.map(setup => {
+      const priceInfo = priceData[setup.symbol.toUpperCase()];
+      if (priceInfo) {
+        return {
+          ...setup,
+          marketPrice: priceInfo.price,
+          priceChange24h: priceInfo.change24h,
+          lastPriceUpdate: now
+        };
+      }
+      return setup;
+    }));
+
+    // Update portfolio position prices
+    setPortfolio(prev => prev.map(position => {
+      const priceInfo = priceData[position.symbol.toUpperCase()];
+      if (priceInfo && position.status === 'open') {
+        return {
+          ...position,
+          currentPrice: priceInfo.price,
+          marketPrice: priceInfo.price,
+          priceChange24h: priceInfo.change24h,
+          lastPriceUpdate: now
+        };
+      }
+      return position;
+    }));
+  };
+
   const calculatePositionPnL = (position: PortfolioPosition): number => {
     const percentChange = (position.currentPrice - position.entryPrice) / position.entryPrice;
     const pnl = position.size * percentChange;
@@ -145,6 +184,7 @@ export const useTradingData = () => {
     deleteSetup,
     updatePosition,
     closePosition,
+    updateMarketPrices,
     calculatePositionPnL,
     MONTHLY_GOAL
   };

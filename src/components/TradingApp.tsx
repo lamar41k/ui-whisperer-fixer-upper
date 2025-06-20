@@ -5,6 +5,7 @@ import { PortfolioTab } from './trading/PortfolioTab';
 import { WatchlistTab } from './trading/WatchlistTab';
 import { CalculatorTab } from './trading/CalculatorTab';
 import { useTradingData } from '@/hooks/useTradingData';
+import { useCryptoPrices } from '@/hooks/useCryptoPrices';
 
 export const TradingApp = () => {
   const [activeTab, setActiveTab] = useState('portfolio');
@@ -19,8 +20,26 @@ export const TradingApp = () => {
     updateSetup,
     deleteSetup, 
     updatePosition, 
-    closePosition 
+    closePosition,
+    updateMarketPrices
   } = useTradingData();
+
+  const { prices, refreshPrices } = useCryptoPrices();
+
+  // Update market prices when crypto prices change
+  useEffect(() => {
+    if (Object.keys(prices).length > 0) {
+      const priceData: Record<string, { price: number; change24h: number; lastUpdated: string }> = {};
+      Object.entries(prices).forEach(([symbol, data]) => {
+        priceData[symbol] = {
+          price: data.price,
+          change24h: data.change24h,
+          lastUpdated: data.lastUpdated
+        };
+      });
+      updateMarketPrices(priceData);
+    }
+  }, [prices, updateMarketPrices]);
 
   const handleEditSetup = (setupId: string) => {
     setEditingSetupId(setupId);
@@ -65,6 +84,7 @@ export const TradingApp = () => {
                 setPortfolioValue={setPortfolioValue}
                 updatePosition={updatePosition}
                 closePosition={closePosition}
+                updateMarketPrices={updateMarketPrices}
               />
             </TabsContent>
 
@@ -74,6 +94,7 @@ export const TradingApp = () => {
                 deleteSetup={deleteSetup}
                 updateSetup={updateSetup}
                 onEditSetup={handleEditSetup}
+                refreshPrices={refreshPrices}
               />
             </TabsContent>
 

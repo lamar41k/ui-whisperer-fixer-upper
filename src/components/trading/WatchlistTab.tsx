@@ -1,23 +1,27 @@
+
 import React, { useState } from 'react';
-import { Edit, Trash2, Target, Shield, TrendingUp, TrendingDown } from 'lucide-react';
+import { Edit, Trash2, Target, Shield, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { TradingSetup } from '@/hooks/useTradingData';
+import { useCryptoPrices } from '@/hooks/useCryptoPrices';
 
 interface WatchlistTabProps {
   setups: TradingSetup[];
   deleteSetup: (id: string) => void;
   updateSetup: (setup: TradingSetup) => void;
   onEditSetup: (setupId: string) => void;
+  refreshPrices: (symbols: string[]) => Promise<void>;
 }
 
 export const WatchlistTab: React.FC<WatchlistTabProps> = ({ 
   setups, 
   deleteSetup, 
   updateSetup,
-  onEditSetup 
+  onEditSetup,
+  refreshPrices
 }) => {
   const [editingSetup, setEditingSetup] = useState<TradingSetup | null>(null);
   const [editForm, setEditForm] = useState({
@@ -28,6 +32,8 @@ export const WatchlistTab: React.FC<WatchlistTabProps> = ({
     status: 'monitoring' as 'monitoring' | 'active' | 'executed' | 'cancelled',
     tags: ''
   });
+
+  const { isLoading, lastUpdated, error } = useCryptoPrices();
 
   const handleEditClick = (setup: TradingSetup) => {
     setEditingSetup(setup);
@@ -59,6 +65,13 @@ export const WatchlistTab: React.FC<WatchlistTabProps> = ({
     setEditingSetup(null);
   };
 
+  const handleRefreshPrices = async () => {
+    const symbols = setups.map(setup => setup.symbol);
+    if (symbols.length > 0) {
+      await refreshPrices(symbols);
+    }
+  };
+
   if (setups.length === 0) {
     return (
       <div className="text-center py-12">
@@ -72,10 +85,35 @@ export const WatchlistTab: React.FC<WatchlistTabProps> = ({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-cyan-400">Watchlist</h2>
-        <div className="text-sm text-gray-400">
-          {setups.length} setup{setups.length !== 1 ? 's' : ''}
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-gray-400">
+            {setups.length} setup{setups.length !== 1 ? 's' : ''}
+          </div>
+          <Button
+            onClick={handleRefreshPrices}
+            disabled={isLoading}
+            className="bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400"
+            size="sm"
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            {isLoading ? 'Updating...' : 'Refresh Prices'}
+          </Button>
         </div>
       </div>
+
+      {lastUpdated && (
+        <div className="text-sm text-gray-400">
+          Prices last updated: {lastUpdated.toLocaleTimeString()}
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+          <div className="text-red-400 text-sm">
+            Error updating prices: {error}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4">
         {setups.map((setup) => (
@@ -113,6 +151,17 @@ export const WatchlistTab: React.FC<WatchlistTabProps> = ({
                     <Shield size={16} />
                     ${setup.stopPrice}
                   </span>
+                  {setup.marketPrice && (
+                    <span className="text-cyan-400">
+                      Market: ${setup.marketPrice.toFixed(4)}
+                    </span>
+                  )}
+                  {setup.priceChange24h !== undefined && (
+                    <span className={`flex items-center gap-1 ${setup.priceChange24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {setup.priceChange24h >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                      {setup.priceChange24h >= 0 ? '+' : ''}{setup.priceChange24h.toFixed(2)}%
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -155,6 +204,12 @@ export const WatchlistTab: React.FC<WatchlistTabProps> = ({
                 </div>
               </div>
             </div>
+
+            {setup.lastPriceUpdate && (
+              <div className="mt-2 text-xs text-gray-500">
+                Price updated: {new Date(setup.lastPriceUpdate).toLocaleTimeString()}
+              </div>
+            )}
 
             {setup.tags && setup.tags.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1">
