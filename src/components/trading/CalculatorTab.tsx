@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { FactorAnalysis } from './FactorAnalysis';
 import { DCAPlanner } from './DCAPlanner';
@@ -8,9 +9,18 @@ import { TradingSetup } from '@/hooks/useTradingData';
 interface CalculatorTabProps {
   portfolioValue: number;
   saveSetup: (setupData: TradingSetup, executedEntries?: any) => void;
+  setups: TradingSetup[];
+  editingSetupId?: string;
+  onClearEdit?: () => void;
 }
 
-export const CalculatorTab: React.FC<CalculatorTabProps> = ({ portfolioValue, saveSetup }) => {
+export const CalculatorTab: React.FC<CalculatorTabProps> = ({ 
+  portfolioValue, 
+  saveSetup, 
+  setups, 
+  editingSetupId,
+  onClearEdit 
+}) => {
   const [formData, setFormData] = useState({
     symbol: '',
     direction: 'long' as 'long' | 'short',
@@ -39,6 +49,32 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({ portfolioValue, sa
     potentialLoss: 0,
     riskReward: 0
   });
+
+  // Load setup data when editing
+  useEffect(() => {
+    if (editingSetupId) {
+      const setupToEdit = setups.find(s => s.id === editingSetupId);
+      if (setupToEdit) {
+        setFormData({
+          symbol: setupToEdit.symbol,
+          direction: setupToEdit.direction.toLowerCase() as 'long' | 'short',
+          targetPrice: setupToEdit.targetPrice,
+          stopPrice: setupToEdit.stopPrice,
+          totalAllocation: setupToEdit.totalAllocation,
+          setupName: setupToEdit.name,
+          setupPriority: setupToEdit.priority,
+          setupStatus: setupToEdit.status,
+          setupTags: setupToEdit.tags.join(', ')
+        });
+        setCheckedFactors(setupToEdit.factors || []);
+        setDcaEntries(setupToEdit.dcaEntries || Array(4).fill(null).map(() => ({
+          price: 0,
+          amount: 0,
+          status: 'planned' as const
+        })));
+      }
+    }
+  }, [editingSetupId, setups]);
 
   // Calculate everything when data changes
   useEffect(() => {
@@ -104,7 +140,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({ portfolioValue, sa
 
   const handleSave = () => {
     const setupData: TradingSetup = {
-      id: Date.now().toString(),
+      id: editingSetupId || Date.now().toString(),
       name: formData.setupName || `${formData.symbol} ${formData.direction}`,
       symbol: formData.symbol.toUpperCase(),
       direction: formData.direction.toUpperCase() as 'LONG' | 'SHORT',
@@ -116,7 +152,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({ portfolioValue, sa
       priority: formData.setupPriority,
       status: formData.setupStatus,
       tags: formData.setupTags.split(',').map(tag => tag.trim()).filter(Boolean),
-      createdDate: new Date().toISOString(),
+      createdDate: editingSetupId ? setups.find(s => s.id === editingSetupId)?.createdDate || new Date().toISOString() : new Date().toISOString(),
       lastUpdated: new Date().toISOString(),
       factors: checkedFactors,
       dcaEntries: dcaEntries
@@ -146,7 +182,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({ portfolioValue, sa
     handleClear();
     
     // Show success message
-    alert('Setup saved successfully!' + (executedEntries.length > 0 ? ' Executed entries added to portfolio.' : ''));
+    alert(`Setup ${editingSetupId ? 'updated' : 'saved'} successfully!` + (executedEntries.length > 0 ? ' Executed entries added to portfolio.' : ''));
   };
 
   const handleClear = () => {
@@ -167,6 +203,9 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({ portfolioValue, sa
       amount: 0,
       status: 'planned' as const
     })));
+    if (onClearEdit) {
+      onClearEdit();
+    }
   };
 
   const canSave = formData.symbol && formData.targetPrice > 0 && formData.stopPrice > 0;
@@ -175,6 +214,19 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({ portfolioValue, sa
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
       {/* Main Calculator */}
       <div className="xl:col-span-2 space-y-6">
+        {editingSetupId && (
+          <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-blue-400 font-medium">Editing Setup</h3>
+              <button
+                onClick={handleClear}
+                className="text-blue-400 hover:text-blue-300 text-sm"
+              >
+                Cancel Edit
+              </button>
+            </div>
+          </div>
+        )}
         <TradeForm formData={formData} setFormData={setFormData} />
         <DCAPlanner 
           entries={dcaEntries} 
@@ -198,6 +250,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({ portfolioValue, sa
           onSave={handleSave}
           onClear={handleClear}
           dcaEntries={dcaEntries}
+          isEditing={!!editingSetupId}
         />
       </div>
     </div>

@@ -1,11 +1,25 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 interface LiveAnalysisProps {
-  calculations: any;
+  calculations: {
+    probability: number;
+    totalFactors: number;
+    averageEntry: number;
+    totalDeployed: number;
+    potentialProfit: number;
+    potentialLoss: number;
+    riskReward: number;
+  };
   portfolioValue: number;
-  formData: any;
+  formData: {
+    symbol: string;
+    direction: 'long' | 'short';
+    targetPrice: number;
+    stopPrice: number;
+    totalAllocation: number;
+  };
   canSave: boolean;
   onSave: () => void;
   onClear: () => void;
@@ -14,6 +28,7 @@ interface LiveAnalysisProps {
     amount: number;
     status: 'planned' | 'executed';
   }>;
+  isEditing?: boolean;
 }
 
 export const LiveAnalysis: React.FC<LiveAnalysisProps> = ({
@@ -23,25 +38,15 @@ export const LiveAnalysis: React.FC<LiveAnalysisProps> = ({
   canSave,
   onSave,
   onClear,
-  dcaEntries
+  dcaEntries,
+  isEditing = false
 }) => {
   const [selectedEntry, setSelectedEntry] = useState(1);
 
-  const calculateScenario = (upToEntry: number) => {
-    const relevantEntries = dcaEntries.slice(0, upToEntry).filter(entry => entry.price > 0 && entry.amount > 0);
-    
-    if (relevantEntries.length === 0) {
-      return {
-        averageEntry: 0,
-        totalDeployed: 0,
-        potentialProfit: 0,
-        potentialLoss: 0,
-        riskReward: 0
-      };
-    }
-
-    const totalDeployed = relevantEntries.reduce((sum, entry) => sum + entry.amount, 0);
-    const weightedSum = relevantEntries.reduce((sum, entry) => sum + (entry.price * entry.amount), 0);
+  const calculateScenario = (entryCount: number) => {
+    const executedEntries = dcaEntries.slice(0, entryCount).filter(entry => entry.status === 'executed' && entry.price > 0 && entry.amount > 0);
+    const totalDeployed = executedEntries.reduce((sum, entry) => sum + entry.amount, 0);
+    const weightedSum = executedEntries.reduce((sum, entry) => sum + (entry.price * entry.amount), 0);
     const averageEntry = totalDeployed > 0 ? weightedSum / totalDeployed : 0;
 
     let potentialProfit = 0;
@@ -70,151 +75,112 @@ export const LiveAnalysis: React.FC<LiveAnalysisProps> = ({
 
   const scenarioCalc = calculateScenario(selectedEntry);
 
-  const getConvictionLevel = () => {
-    if (calculations.totalFactors < 3) return { level: 'Need 3+ Factors', color: 'text-red-400', bg: 'bg-red-500/20' };
-    if (calculations.probability < 70) return { level: 'Low Conviction', color: 'text-red-400', bg: 'bg-red-500/20' };
-    if (calculations.probability < 80) return { level: 'Medium Conviction', color: 'text-yellow-400', bg: 'bg-yellow-500/20' };
-    return { level: 'High Conviction', color: 'text-green-400', bg: 'bg-green-500/20' };
-  };
-
-  const conviction = getConvictionLevel();
-  const monthlyImpact = (scenarioCalc.potentialProfit / 2000) * 100;
-
   return (
-    <div className="bg-gray-700/50 rounded-lg p-6 border border-cyan-500/30 space-y-6">
-      <div className="text-center">
-        <h3 className="text-lg font-semibold text-cyan-400 mb-2">Live Analysis</h3>
-        <p className="text-sm text-gray-400">Real-time probability & profit</p>
+    <div className="bg-gray-700/30 border border-gray-600/50 rounded-lg p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-cyan-400">Live Analysis</h3>
+        {isEditing && (
+          <Badge variant="secondary" className="bg-blue-500/20 text-blue-400">
+            Editing
+          </Badge>
+        )}
       </div>
 
       {/* Entry Scenario Toggle */}
       <div className="space-y-3">
-        <h4 className="font-semibold text-cyan-400">📊 Entry Scenario</h4>
-        <div className="grid grid-cols-4 gap-1">
-          {[1, 2, 3, 4].map(entryNum => (
+        <h4 className="text-sm font-medium text-gray-300">What-if Scenario</h4>
+        <div className="grid grid-cols-2 gap-2">
+          {[1, 2, 3, 4].map((entry) => (
             <button
-              key={entryNum}
-              onClick={() => setSelectedEntry(entryNum)}
-              className={`px-2 py-1 text-xs rounded transition-colors ${
-                selectedEntry === entryNum
-                  ? 'bg-cyan-500/30 text-cyan-400 border border-cyan-500/50'
-                  : 'bg-gray-600/30 text-gray-400 border border-gray-500/30 hover:bg-gray-600/50'
+              key={entry}
+              onClick={() => setSelectedEntry(entry)}
+              className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
+                selectedEntry === entry
+                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                  : 'bg-gray-600/30 text-gray-400 hover:bg-gray-600/50'
               }`}
             >
-              Entry {entryNum}
+              Entry {entry}
             </button>
           ))}
         </div>
-        <div className="text-xs text-gray-400 text-center">
-          What if up to Entry {selectedEntry} happens?
+      </div>
+
+      {/* Scenario Analysis */}
+      <div className="space-y-4">
+        <div className="bg-gray-600/20 rounded-lg p-4 space-y-3">
+          <h4 className="text-sm font-semibold text-cyan-400">Scenario: Up to Entry {selectedEntry}</h4>
+          
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <div className="text-gray-400">Avg Entry</div>
+              <div className="text-white font-medium">
+                ${scenarioCalc.averageEntry > 0 ? scenarioCalc.averageEntry.toFixed(4) : '0.0000'}
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-400">Deployed</div>
+              <div className="text-white font-medium">
+                ${scenarioCalc.totalDeployed.toLocaleString()}
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-400">Potential Profit</div>
+              <div className="text-green-400 font-medium">
+                ${scenarioCalc.potentialProfit.toFixed(0)}
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-400">Potential Loss</div>
+              <div className="text-red-400 font-medium">
+                ${scenarioCalc.potentialLoss.toFixed(0)}
+              </div>
+            </div>
+          </div>
+          
+          <div className="pt-2 border-t border-gray-600/30">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-400 text-sm">Risk/Reward</span>
+              <span className={`font-medium ${
+                scenarioCalc.riskReward >= 2 ? 'text-green-400' :
+                scenarioCalc.riskReward >= 1 ? 'text-yellow-400' : 'text-red-400'
+              }`}>
+                {scenarioCalc.riskReward > 0 ? `1:${scenarioCalc.riskReward.toFixed(2)}` : 'N/A'}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Probability Display */}
-      <div className="text-center">
-        <div className="text-4xl font-bold text-cyan-400 mb-1">
-          {calculations.probability}%
-        </div>
-        <div className="text-sm text-gray-400">Probability</div>
-      </div>
-
-      {/* Conviction Level */}
-      <div className={`text-center p-3 rounded-lg ${conviction.bg}`}>
-        <div className={`font-semibold ${conviction.color}`}>
-          {conviction.level} ({calculations.probability}%)
-        </div>
-      </div>
-
-      {/* Factor Analysis */}
+      {/* Factor Analysis Summary */}
       <div className="space-y-3">
-        <h4 className="font-semibold text-cyan-400">📊 Factor Analysis</h4>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-400">Pattern Factors:</span>
-            <span className="text-white">{calculations.totalFactors}</span>
+        <h4 className="text-sm font-medium text-gray-300">Factor Analysis</h4>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <div className="text-gray-400">Probability</div>
+            <div className="text-cyan-400 font-medium">{calculations.probability}%</div>
           </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Support/Resistance:</span>
-            <span className="text-white">—</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Confluence Factors:</span>
-            <span className="text-white">—</span>
-          </div>
-          <div className="flex justify-between border-t border-cyan-500/30 pt-2">
-            <span className="font-semibold text-gray-300">Total Factors:</span>
-            <span className="font-semibold text-cyan-400">{calculations.totalFactors}</span>
+          <div>
+            <div className="text-gray-400">Total Factors</div>
+            <div className="text-cyan-400 font-medium">{calculations.totalFactors}</div>
           </div>
         </div>
       </div>
 
-      {/* Position Analysis */}
-      <div className="space-y-3">
-        <h4 className="font-semibold text-cyan-400">💰 Position Analysis (Entry {selectedEntry})</h4>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-400">Average Entry:</span>
-            <span className="text-white">${scenarioCalc.averageEntry.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Total Deployed:</span>
-            <span className="text-white">${scenarioCalc.totalDeployed.toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Portfolio %:</span>
-            <span className="text-white">{((scenarioCalc.totalDeployed / portfolioValue) * 100).toFixed(1)}%</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Risk/Reward */}
-      <div className="space-y-3">
-        <h4 className="font-semibold text-cyan-400">📈 Risk/Reward (Entry {selectedEntry})</h4>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-400">Potential Profit:</span>
-            <span className="text-green-400">${scenarioCalc.potentialProfit.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Potential Loss:</span>
-            <span className="text-red-400">${Math.abs(scenarioCalc.potentialLoss).toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Risk/Reward:</span>
-            <span className="text-white">{scenarioCalc.riskReward.toFixed(1)}:1</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Monthly Goal:</span>
-            <span className="text-white">{monthlyImpact.toFixed(1)}%</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Warning Box */}
-      {calculations.totalFactors < 3 && (
-        <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-3">
-          <div className="text-red-400 text-sm">
-            ⚠️ Need minimum 3 factors for any trade
-          </div>
-        </div>
-      )}
-
-      {/* Action Buttons */}
-      <div className="space-y-3">
+      <div className="flex gap-3">
         <Button 
-          onClick={onSave}
+          onClick={onSave} 
           disabled={!canSave}
-          className="w-full bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/30"
+          className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white"
         >
-          {canSave ? 'SAVE SETUP' : 'COMPLETE ALL FIELDS'}
+          {isEditing ? 'Update Setup' : 'Save Setup'}
         </Button>
-        
         <Button 
-          onClick={onClear}
+          onClick={onClear} 
           variant="outline"
-          className="w-full border-gray-500 text-gray-400 hover:text-white"
+          className="border-gray-600 text-gray-300 hover:bg-gray-600/20"
         >
-          Clear All
+          Clear
         </Button>
       </div>
     </div>

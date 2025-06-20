@@ -7,6 +7,9 @@ import { CalculatorTab } from './trading/CalculatorTab';
 import { useTradingData } from '@/hooks/useTradingData';
 
 export const TradingApp = () => {
+  const [activeTab, setActiveTab] = useState('portfolio');
+  const [editingSetupId, setEditingSetupId] = useState<string | undefined>(undefined);
+
   const { 
     portfolioValue, 
     setPortfolioValue, 
@@ -18,6 +21,15 @@ export const TradingApp = () => {
     updatePosition, 
     closePosition 
   } = useTradingData();
+
+  const handleEditSetup = (setupId: string) => {
+    setEditingSetupId(setupId);
+    setActiveTab('calculator');
+  };
+
+  const handleClearEdit = () => {
+    setEditingSetupId(undefined);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
@@ -33,7 +45,7 @@ export const TradingApp = () => {
             </div>
           </div>
 
-          <Tabs defaultValue="portfolio" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-3 bg-gray-700/50 border border-cyan-500/30">
               <TabsTrigger value="portfolio" className="data-[state=active]:bg-cyan-500/20 data-[state=active]:text-cyan-400">
                 Portfolio
@@ -61,6 +73,7 @@ export const TradingApp = () => {
                 setups={setups}
                 deleteSetup={deleteSetup}
                 updateSetup={updateSetup}
+                onEditSetup={handleEditSetup}
               />
             </TabsContent>
 
@@ -68,6 +81,9 @@ export const TradingApp = () => {
               <CalculatorTab 
                 portfolioValue={portfolioValue}
                 saveSetup={saveSetup}
+                setups={setups}
+                editingSetupId={editingSetupId}
+                onClearEdit={handleClearEdit}
               />
             </TabsContent>
           </Tabs>
