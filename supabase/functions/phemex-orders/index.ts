@@ -19,18 +19,18 @@ serve(async (req) => {
       throw new Error('Phemex API credentials not configured');
     }
 
-    // For futures orders, we don't need a symbol parameter - get all active orders
+    // For USD-M Perpetual orders
     const timestamp = Date.now();
-    const path = '/g-orders/activeList';
-    const queryString = '?currency=USDT';
+    const path = '/orders/activeList';
+    const queryString = '?currency=USD';
     const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex documentation
     const message = path + queryString + expiry;
-    console.log('Orders signature message:', message);
-    console.log('Orders timestamp:', timestamp);
-    console.log('Orders expiry:', expiry);
-    console.log('Orders API Key (first 10 chars):', apiKey.substring(0, 10));
+    console.log('USD-M Orders signature message:', message);
+    console.log('USD-M Orders timestamp:', timestamp);
+    console.log('USD-M Orders expiry:', expiry);
+    console.log('USD-M Orders API Key (first 10 chars):', apiKey.substring(0, 10));
     
     const encoder = new TextEncoder();
     const keyData = encoder.encode(apiSecret);
@@ -50,8 +50,8 @@ serve(async (req) => {
       .join('');
 
     const apiUrl = `https://api.phemex.com${path}${queryString}`;
-    console.log('Making request to Phemex orders API:', apiUrl, 'with expiry:', expiry);
-    console.log('Orders signature:', signatureHex);
+    console.log('Making request to Phemex USD-M Orders API:', apiUrl, 'with expiry:', expiry);
+    console.log('USD-M Orders signature:', signatureHex);
     
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -63,8 +63,8 @@ serve(async (req) => {
     });
 
     const responseText = await response.text();
-    console.log('Phemex orders API response status:', response.status);
-    console.log('Phemex orders API response:', responseText);
+    console.log('Phemex USD-M Orders API response status:', response.status);
+    console.log('Phemex USD-M Orders API response:', responseText);
 
     if (!response.ok) {
       throw new Error(`Phemex API error: ${response.status} ${responseText}`);

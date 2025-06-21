@@ -21,17 +21,18 @@ serve(async (req) => {
     }
 
     const timestamp = Date.now();
-    const path = '/g-accounts/accountPositions';
-    const queryString = '?currency=USDT';
+    // Use USD-M Perpetual account endpoint
+    const path = '/accounts/accountPositions';
+    const queryString = '?currency=USD';
     const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex documentation
     // For GET requests: path + queryString + expiry (without body)
     const message = path + queryString + expiry;
-    console.log('Signature message:', message);
-    console.log('Timestamp:', timestamp);
-    console.log('Expiry:', expiry);
-    console.log('API Key (first 10 chars):', apiKey.substring(0, 10));
+    console.log('USD-M Account signature message:', message);
+    console.log('USD-M Account timestamp:', timestamp);
+    console.log('USD-M Account expiry:', expiry);
+    console.log('USD-M Account API Key (first 10 chars):', apiKey.substring(0, 10));
     
     const encoder = new TextEncoder();
     const keyData = encoder.encode(apiSecret);
@@ -50,8 +51,8 @@ serve(async (req) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    console.log('Making request to Phemex API with expiry:', expiry);
-    console.log('Generated signature:', signatureHex);
+    console.log('Making request to Phemex USD-M Account API with expiry:', expiry);
+    console.log('USD-M Account signature:', signatureHex);
 
     const response = await fetch(`https://api.phemex.com${path}${queryString}`, {
       method: 'GET',
@@ -63,8 +64,8 @@ serve(async (req) => {
     });
 
     const responseText = await response.text();
-    console.log('Phemex API response status:', response.status);
-    console.log('Phemex API response:', responseText);
+    console.log('Phemex USD-M Account API response status:', response.status);
+    console.log('Phemex USD-M Account API response:', responseText);
 
     if (!response.ok) {
       throw new Error(`Phemex API error: ${response.status} ${responseText}`);
@@ -72,7 +73,7 @@ serve(async (req) => {
 
     const data = JSON.parse(responseText);
     
-    // Extract account information from the response
+    // Extract account information from USD-M Perpetual response
     let account = null;
     if (data.data && data.data.account) {
       account = data.data.account;
@@ -81,7 +82,7 @@ serve(async (req) => {
       const firstPosition = data.data.positions[0];
       account = {
         accountID: firstPosition.accountId || 0,
-        currency: 'USDT',
+        currency: 'USD',
         totalEquity: firstPosition.accountBalance || 0,
         availableBalance: firstPosition.availableBalance || 0,
         unrealisedPnl: firstPosition.unrealisedPnl || 0
@@ -90,7 +91,7 @@ serve(async (req) => {
       // Create a default account structure if no data is available
       account = {
         accountID: 0,
-        currency: 'USDT',
+        currency: 'USD',
         totalEquity: 0,
         availableBalance: 0,
         unrealisedPnl: 0

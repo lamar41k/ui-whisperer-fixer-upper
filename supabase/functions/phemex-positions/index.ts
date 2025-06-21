@@ -20,16 +20,17 @@ serve(async (req) => {
     }
 
     const timestamp = Date.now();
-    const path = '/g-accounts/accountPositions';
-    const queryString = '?currency=USDT';
+    // Use USD-M Perpetual positions endpoint
+    const path = '/accounts/accountPositions';
+    const queryString = '?currency=USD';
     const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex documentation
     const message = path + queryString + expiry;
-    console.log('Positions signature message:', message);
-    console.log('Positions timestamp:', timestamp);
-    console.log('Positions expiry:', expiry);
-    console.log('Positions API Key (first 10 chars):', apiKey.substring(0, 10));
+    console.log('USD-M Positions signature message:', message);
+    console.log('USD-M Positions timestamp:', timestamp);
+    console.log('USD-M Positions expiry:', expiry);
+    console.log('USD-M Positions API Key (first 10 chars):', apiKey.substring(0, 10));
     
     const encoder = new TextEncoder();
     const keyData = encoder.encode(apiSecret);
@@ -48,8 +49,8 @@ serve(async (req) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    console.log('Making request to Phemex positions API with expiry:', expiry);
-    console.log('Positions signature:', signatureHex);
+    console.log('Making request to Phemex USD-M Positions API with expiry:', expiry);
+    console.log('USD-M Positions signature:', signatureHex);
 
     const response = await fetch(`https://api.phemex.com${path}${queryString}`, {
       method: 'GET',
@@ -61,8 +62,8 @@ serve(async (req) => {
     });
 
     const responseText = await response.text();
-    console.log('Phemex positions API response status:', response.status);
-    console.log('Phemex positions API response:', responseText);
+    console.log('Phemex USD-M Positions API response status:', response.status);
+    console.log('Phemex USD-M Positions API response:', responseText);
 
     if (!response.ok) {
       throw new Error(`Phemex API error: ${response.status} ${responseText}`);
