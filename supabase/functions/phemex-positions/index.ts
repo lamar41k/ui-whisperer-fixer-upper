@@ -21,7 +21,7 @@ serve(async (req) => {
 
     const timestamp = Date.now();
     const path = '/g-accounts/accountPositions';
-    const queryString = '?currency=USDT'; // Changed to USDT for USD-S perps
+    const queryString = '?currency=USDT';
     const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex documentation
