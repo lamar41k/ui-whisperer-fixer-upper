@@ -21,12 +21,14 @@ serve(async (req) => {
 
     const timestamp = Date.now();
     const path = '/accounts/accountPositions';
-    const queryString = '';
-    const body = '';
+    const queryString = '?currency=BTC';
+    const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex documentation
-    const message = path + queryString + timestamp + body;
-    console.log('Signature message:', message);
+    const message = path + queryString + expiry;
+    console.log('Positions signature message:', message);
+    console.log('Positions timestamp:', timestamp);
+    console.log('Positions expiry:', expiry);
     
     const encoder = new TextEncoder();
     const keyData = encoder.encode(apiSecret);
@@ -45,14 +47,14 @@ serve(async (req) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    console.log('Making request to Phemex positions API with timestamp:', timestamp);
+    console.log('Making request to Phemex positions API with expiry:', expiry);
 
-    const response = await fetch('https://api.phemex.com/accounts/accountPositions', {
+    const response = await fetch(`https://api.phemex.com${path}${queryString}`, {
       method: 'GET',
       headers: {
         'x-phemex-access-token': apiKey,
         'x-phemex-request-signature': signatureHex,
-        'x-phemex-request-timestamp': timestamp.toString(),
+        'x-phemex-request-expiry': expiry.toString(),
         'Content-Type': 'application/json',
       },
     });

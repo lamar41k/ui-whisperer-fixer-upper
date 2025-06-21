@@ -34,11 +34,14 @@ serve(async (req) => {
     const path = '/orders';
     const queryString = '';
     const body = JSON.stringify(params);
+    const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex documentation
-    const message = path + queryString + timestamp + body;
-    console.log('Signature message:', message);
-    console.log('Order params:', params);
+    const message = path + queryString + expiry + body;
+    console.log('Place order signature message:', message);
+    console.log('Place order params:', params);
+    console.log('Place order timestamp:', timestamp);
+    console.log('Place order expiry:', expiry);
     
     const encoder = new TextEncoder();
     const keyData = encoder.encode(apiSecret);
@@ -57,14 +60,14 @@ serve(async (req) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    console.log('Making order request to Phemex API with timestamp:', timestamp);
+    console.log('Making order request to Phemex API with expiry:', expiry);
 
     const response = await fetch('https://api.phemex.com/orders', {
       method: 'POST',
       headers: {
         'x-phemex-access-token': apiKey,
         'x-phemex-request-signature': signatureHex,
-        'x-phemex-request-timestamp': timestamp.toString(),
+        'x-phemex-request-expiry': expiry.toString(),
         'Content-Type': 'application/json',
       },
       body: body

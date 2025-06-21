@@ -25,11 +25,13 @@ serve(async (req) => {
 
     const timestamp = Date.now();
     const path = '/orders/activeList';
-    const body = '';
+    const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex documentation
-    const message = path + queryString + timestamp + body;
-    console.log('Signature message:', message);
+    const message = path + queryString + expiry;
+    console.log('Orders signature message:', message);
+    console.log('Orders timestamp:', timestamp);
+    console.log('Orders expiry:', expiry);
     
     const encoder = new TextEncoder();
     const keyData = encoder.encode(apiSecret);
@@ -48,15 +50,15 @@ serve(async (req) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    const apiUrl = `https://api.phemex.com/orders/activeList${queryString}`;
-    console.log('Making request to Phemex orders API:', apiUrl, 'with timestamp:', timestamp);
+    const apiUrl = `https://api.phemex.com${path}${queryString}`;
+    console.log('Making request to Phemex orders API:', apiUrl, 'with expiry:', expiry);
     
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
         'x-phemex-access-token': apiKey,
         'x-phemex-request-signature': signatureHex,
-        'x-phemex-request-timestamp': timestamp.toString(),
+        'x-phemex-request-expiry': expiry.toString(),
         'Content-Type': 'application/json',
       },
     });
