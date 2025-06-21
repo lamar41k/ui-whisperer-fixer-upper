@@ -22,7 +22,7 @@ serve(async (req) => {
     // For futures orders, we don't need a symbol parameter - get all active orders
     const timestamp = Date.now();
     const path = '/g-orders/activeList';
-    const queryString = '?currency=BTC';
+    const queryString = '?currency=USDT'; // Changed to USDT for USD-S perps
     const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex documentation

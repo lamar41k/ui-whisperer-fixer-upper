@@ -22,11 +22,11 @@ serve(async (req) => {
 
     const timestamp = Date.now();
     const path = '/g-accounts/accountPositions';
-    const queryString = '?currency=BTC';
+    const queryString = '?currency=USDT'; // Changed to USDT for USD-S perps
     const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex documentation
-    // Message format: path + queryString + expiry + body
+    // For GET requests: path + queryString + expiry
     const message = path + queryString + expiry;
     console.log('Signature message:', message);
     console.log('Timestamp:', timestamp);
@@ -72,8 +72,24 @@ serve(async (req) => {
 
     const data = JSON.parse(responseText);
     
+    // Extract account information from the response
+    let account = null;
+    if (data.data && data.data.account) {
+      account = data.data.account;
+    } else if (data.data && data.data.positions && data.data.positions.length > 0) {
+      // If no account field, try to extract from positions data
+      const firstPosition = data.data.positions[0];
+      account = {
+        accountID: firstPosition.accountId || 0,
+        currency: 'USDT',
+        totalEquity: firstPosition.accountBalance || 0,
+        availableBalance: firstPosition.availableBalance || 0,
+        unrealisedPnl: firstPosition.unrealisedPnl || 0
+      };
+    }
+    
     return new Response(
-      JSON.stringify(data),
+      JSON.stringify({ data: { account } }),
       { 
         headers: { 
           ...corsHeaders, 
