@@ -21,13 +21,16 @@ serve(async (req) => {
 
     const url = new URL(req.url);
     const symbol = url.searchParams.get('symbol');
-    const queryString = symbol ? `symbol=${symbol}` : '';
+    const queryString = symbol ? `?symbol=${symbol}` : '';
 
     const timestamp = Date.now();
     const path = '/orders/activeList';
     const body = '';
     
-    const message = 'GET' + path + queryString + timestamp + body;
+    // Generate signature according to Phemex documentation
+    const message = path + queryString + timestamp + body;
+    console.log('Signature message:', message);
+    
     const encoder = new TextEncoder();
     const keyData = encoder.encode(apiSecret);
     const messageData = encoder.encode(message);
@@ -45,7 +48,8 @@ serve(async (req) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    const apiUrl = `https://api.phemex.com/orders/activeList${queryString ? '?' + queryString : ''}`;
+    const apiUrl = `https://api.phemex.com/orders/activeList${queryString}`;
+    console.log('Making request to Phemex orders API:', apiUrl, 'with timestamp:', timestamp);
     
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -57,12 +61,15 @@ serve(async (req) => {
       },
     });
 
+    const responseText = await response.text();
+    console.log('Phemex orders API response status:', response.status);
+    console.log('Phemex orders API response:', responseText);
+
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Phemex API error: ${response.status} ${errorText}`);
+      throw new Error(`Phemex API error: ${response.status} ${responseText}`);
     }
 
-    const data = await response.json();
+    const data = JSON.parse(responseText);
     
     return new Response(
       JSON.stringify({ data: { rows: data.data?.rows || [] } }),

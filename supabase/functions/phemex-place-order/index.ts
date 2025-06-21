@@ -35,7 +35,11 @@ serve(async (req) => {
     const queryString = '';
     const body = JSON.stringify(params);
     
-    const message = 'POST' + path + queryString + timestamp + body;
+    // Generate signature according to Phemex documentation
+    const message = path + queryString + timestamp + body;
+    console.log('Signature message:', message);
+    console.log('Order params:', params);
+    
     const encoder = new TextEncoder();
     const keyData = encoder.encode(apiSecret);
     const messageData = encoder.encode(message);
@@ -53,6 +57,8 @@ serve(async (req) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
+    console.log('Making order request to Phemex API with timestamp:', timestamp);
+
     const response = await fetch('https://api.phemex.com/orders', {
       method: 'POST',
       headers: {
@@ -64,12 +70,15 @@ serve(async (req) => {
       body: body
     });
 
+    const responseText = await response.text();
+    console.log('Phemex place order API response status:', response.status);
+    console.log('Phemex place order API response:', responseText);
+
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Phemex API error: ${response.status} ${errorText}`);
+      throw new Error(`Phemex API error: ${response.status} ${responseText}`);
     }
 
-    const data = await response.json();
+    const data = JSON.parse(responseText);
     
     return new Response(
       JSON.stringify(data),
