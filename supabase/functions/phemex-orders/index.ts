@@ -30,6 +30,7 @@ serve(async (req) => {
     console.log('Orders signature message:', message);
     console.log('Orders timestamp:', timestamp);
     console.log('Orders expiry:', expiry);
+    console.log('Orders API Key (first 10 chars):', apiKey.substring(0, 10));
     
     const encoder = new TextEncoder();
     const keyData = encoder.encode(apiSecret);
@@ -50,6 +51,7 @@ serve(async (req) => {
 
     const apiUrl = `https://api.phemex.com${path}${queryString}`;
     console.log('Making request to Phemex orders API:', apiUrl, 'with expiry:', expiry);
+    console.log('Orders signature:', signatureHex);
     
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -57,7 +59,6 @@ serve(async (req) => {
         'x-phemex-access-token': apiKey,
         'x-phemex-request-signature': signatureHex,
         'x-phemex-request-expiry': expiry.toString(),
-        'Content-Type': 'application/json',
       },
     });
 

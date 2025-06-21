@@ -26,11 +26,12 @@ serve(async (req) => {
     const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex documentation
-    // For GET requests with query params: path + queryString + expiry
+    // For GET requests: path + queryString + expiry (without body)
     const message = path + queryString + expiry;
     console.log('Signature message:', message);
     console.log('Timestamp:', timestamp);
     console.log('Expiry:', expiry);
+    console.log('API Key (first 10 chars):', apiKey.substring(0, 10));
     
     const encoder = new TextEncoder();
     const keyData = encoder.encode(apiSecret);
@@ -58,7 +59,6 @@ serve(async (req) => {
         'x-phemex-access-token': apiKey,
         'x-phemex-request-signature': signatureHex,
         'x-phemex-request-expiry': expiry.toString(),
-        'Content-Type': 'application/json',
       },
     });
 
@@ -85,6 +85,15 @@ serve(async (req) => {
         totalEquity: firstPosition.accountBalance || 0,
         availableBalance: firstPosition.availableBalance || 0,
         unrealisedPnl: firstPosition.unrealisedPnl || 0
+      };
+    } else {
+      // Create a default account structure if no data is available
+      account = {
+        accountID: 0,
+        currency: 'USDT',
+        totalEquity: 0,
+        availableBalance: 0,
+        unrealisedPnl: 0
       };
     }
     

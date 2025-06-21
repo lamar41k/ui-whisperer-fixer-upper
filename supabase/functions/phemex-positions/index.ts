@@ -29,6 +29,7 @@ serve(async (req) => {
     console.log('Positions signature message:', message);
     console.log('Positions timestamp:', timestamp);
     console.log('Positions expiry:', expiry);
+    console.log('Positions API Key (first 10 chars):', apiKey.substring(0, 10));
     
     const encoder = new TextEncoder();
     const keyData = encoder.encode(apiSecret);
@@ -48,6 +49,7 @@ serve(async (req) => {
       .join('');
 
     console.log('Making request to Phemex positions API with expiry:', expiry);
+    console.log('Positions signature:', signatureHex);
 
     const response = await fetch(`https://api.phemex.com${path}${queryString}`, {
       method: 'GET',
@@ -55,7 +57,6 @@ serve(async (req) => {
         'x-phemex-access-token': apiKey,
         'x-phemex-request-signature': signatureHex,
         'x-phemex-request-expiry': expiry.toString(),
-        'Content-Type': 'application/json',
       },
     });
 
