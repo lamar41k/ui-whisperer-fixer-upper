@@ -20,12 +20,12 @@ serve(async (req) => {
     }
 
     const timestamp = Date.now();
-    // Use USD-M Perpetual positions endpoint
-    const path = '/accounts/accountPositions';
-    const queryString = '?currency=USD';
+    // Use correct USD-M Perpetual positions endpoint
+    const path = '/g-accounts/accountPositions';
+    const queryString = '?currency=USDT';
     const expiry = timestamp + 60000; // 1 minute expiry
     
-    // Generate signature according to Phemex documentation
+    // Generate signature according to Phemex USD-M Perpetual documentation
     const message = path + queryString + expiry;
     console.log('USD-M Positions signature message:', message);
     console.log('USD-M Positions timestamp:', timestamp);
@@ -63,16 +63,34 @@ serve(async (req) => {
 
     const responseText = await response.text();
     console.log('Phemex USD-M Positions API response status:', response.status);
-    console.log('Phemex USD-M Positions API response:', responseText);
+    console.log('Phemex USD-M Positions API raw response:', responseText);
 
     if (!response.ok) {
       throw new Error(`Phemex API error: ${response.status} ${responseText}`);
     }
 
     const data = JSON.parse(responseText);
+    console.log('Phemex USD-M Positions API parsed data:', JSON.stringify(data, null, 2));
+
+    // Extract positions from USD-M Perpetual response
+    let positions = [];
+    if (data.data && data.data.positions) {
+      positions = data.data.positions.map((pos: any) => ({
+        symbol: pos.symbol,
+        side: pos.side,
+        size: (pos.sizeEv || 0) / 100000000, // Convert from Ev
+        value: (pos.valueEv || 0) / 100000000,
+        entryPrice: (pos.avgEntryPriceEv || 0) / 100000000,
+        markPrice: (pos.markPriceEv || 0) / 100000000,
+        unrealisedPnl: (pos.unrealisedPnlEv || 0) / 100000000,
+        unrealisedPnlPcnt: pos.unrealisedPnlPcnt || 0
+      }));
+    }
+
+    console.log('Final positions array:', JSON.stringify(positions, null, 2));
     
     return new Response(
-      JSON.stringify({ data: { positions: data.data?.positions || [] } }),
+      JSON.stringify({ data: { positions } }),
       { 
         headers: { 
           ...corsHeaders, 

@@ -21,11 +21,11 @@ serve(async (req) => {
 
     // For USD-M Perpetual orders
     const timestamp = Date.now();
-    const path = '/orders/activeList';
-    const queryString = '?currency=USD';
+    const path = '/g-orders/activeList';
+    const queryString = '?currency=USDT';
     const expiry = timestamp + 60000; // 1 minute expiry
     
-    // Generate signature according to Phemex documentation
+    // Generate signature according to Phemex USD-M Perpetual documentation
     const message = path + queryString + expiry;
     console.log('USD-M Orders signature message:', message);
     console.log('USD-M Orders timestamp:', timestamp);
@@ -64,16 +64,35 @@ serve(async (req) => {
 
     const responseText = await response.text();
     console.log('Phemex USD-M Orders API response status:', response.status);
-    console.log('Phemex USD-M Orders API response:', responseText);
+    console.log('Phemex USD-M Orders API raw response:', responseText);
 
     if (!response.ok) {
       throw new Error(`Phemex API error: ${response.status} ${responseText}`);
     }
 
     const data = JSON.parse(responseText);
+    console.log('Phemex USD-M Orders API parsed data:', JSON.stringify(data, null, 2));
+
+    // Extract orders from USD-M Perpetual response
+    let orders = [];
+    if (data.data && data.data.rows) {
+      orders = data.data.rows.map((order: any) => ({
+        orderID: order.orderID,
+        symbol: order.symbol,
+        side: order.side,
+        ordType: order.ordType,
+        price: (order.priceEv || 0) / 100000000, // Convert from Ev
+        orderQty: (order.orderQtyEv || 0) / 100000000,
+        cumQty: (order.cumQtyEv || 0) / 100000000,
+        ordStatus: order.ordStatus,
+        transactTime: order.transactTimeNs ? parseInt(order.transactTimeNs) / 1000000 : Date.now()
+      }));
+    }
+
+    console.log('Final orders array:', JSON.stringify(orders, null, 2));
     
     return new Response(
-      JSON.stringify({ data: { rows: data.data?.rows || [] } }),
+      JSON.stringify({ data: { rows: orders } }),
       { 
         headers: { 
           ...corsHeaders, 

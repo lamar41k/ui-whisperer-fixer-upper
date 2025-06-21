@@ -21,13 +21,12 @@ serve(async (req) => {
     }
 
     const timestamp = Date.now();
-    // Use USD-M Perpetual account endpoint
-    const path = '/accounts/accountPositions';
-    const queryString = '?currency=USD';
+    // Use correct USD-M Perpetual account endpoint
+    const path = '/g-accounts/accountPositions';
+    const queryString = '?currency=USDT';
     const expiry = timestamp + 60000; // 1 minute expiry
     
-    // Generate signature according to Phemex documentation
-    // For GET requests: path + queryString + expiry (without body)
+    // Generate signature according to Phemex USD-M Perpetual documentation
     const message = path + queryString + expiry;
     console.log('USD-M Account signature message:', message);
     console.log('USD-M Account timestamp:', timestamp);
@@ -65,38 +64,63 @@ serve(async (req) => {
 
     const responseText = await response.text();
     console.log('Phemex USD-M Account API response status:', response.status);
-    console.log('Phemex USD-M Account API response:', responseText);
+    console.log('Phemex USD-M Account API raw response:', responseText);
 
     if (!response.ok) {
       throw new Error(`Phemex API error: ${response.status} ${responseText}`);
     }
 
     const data = JSON.parse(responseText);
+    console.log('Phemex USD-M Account API parsed data:', JSON.stringify(data, null, 2));
     
     // Extract account information from USD-M Perpetual response
     let account = null;
     if (data.data && data.data.account) {
-      account = data.data.account;
-    } else if (data.data && data.data.positions && data.data.positions.length > 0) {
-      // If no account field, try to extract from positions data
-      const firstPosition = data.data.positions[0];
+      // Direct account data
+      const accountData = data.data.account;
       account = {
-        accountID: firstPosition.accountId || 0,
-        currency: 'USD',
-        totalEquity: firstPosition.accountBalance || 0,
-        availableBalance: firstPosition.availableBalance || 0,
-        unrealisedPnl: firstPosition.unrealisedPnl || 0
+        accountID: accountData.accountId || 0,
+        currency: 'USDT',
+        totalEquity: (accountData.totalEquityEv || 0) / 100000000, // Convert from Ev to USDT
+        availableBalance: (accountData.availableBalanceEv || 0) / 100000000,
+        unrealisedPnl: (accountData.totalUnrealisedPnlEv || 0) / 100000000
+      };
+    } else if (data.data && data.data.positions && data.data.positions.length > 0) {
+      // Extract from positions if account field not available
+      const positions = data.data.positions;
+      const totalEquity = positions.reduce((sum: number, pos: any) => sum + (pos.accountBalanceEv || 0), 0) / 100000000;
+      const unrealisedPnl = positions.reduce((sum: number, pos: any) => sum + (pos.unrealisedPnlEv || 0), 0) / 100000000;
+      
+      account = {
+        accountID: positions[0]?.accountId || 0,
+        currency: 'USDT',
+        totalEquity: totalEquity,
+        availableBalance: totalEquity - unrealisedPnl,
+        unrealisedPnl: unrealisedPnl
+      };
+    } else if (data.data && data.data.accounts && data.data.accounts.length > 0) {
+      // Check for accounts array
+      const accountData = data.data.accounts[0];
+      account = {
+        accountID: accountData.accountId || 0,
+        currency: 'USDT',
+        totalEquity: (accountData.totalEquityEv || 0) / 100000000,
+        availableBalance: (accountData.availableBalanceEv || 0) / 100000000,
+        unrealisedPnl: (accountData.totalUnrealisedPnlEv || 0) / 100000000
       };
     } else {
       // Create a default account structure if no data is available
+      console.log('No account data found, creating default structure');
       account = {
         accountID: 0,
-        currency: 'USD',
+        currency: 'USDT',
         totalEquity: 0,
         availableBalance: 0,
         unrealisedPnl: 0
       };
     }
+
+    console.log('Final account object:', JSON.stringify(account, null, 2));
     
     return new Response(
       JSON.stringify({ data: { account } }),
