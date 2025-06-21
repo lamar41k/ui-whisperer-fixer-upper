@@ -26,9 +26,14 @@ serve(async (req) => {
     const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex USD-M Perpetual documentation
-    // The message format should be: path + queryString + expiry (as string)
-    const message = path + queryString + expiry.toString();
+    // For USD-M Perpetual: method + path + queryString + expiry + body
+    const method = 'GET';
+    const body = '';
+    const message = method + path + queryString + expiry.toString() + body;
     console.log('USD-M Positions signature message:', message);
+    console.log('USD-M Positions method:', method);
+    console.log('USD-M Positions path:', path);
+    console.log('USD-M Positions queryString:', queryString);
     console.log('USD-M Positions timestamp:', timestamp);
     console.log('USD-M Positions expiry:', expiry);
     console.log('USD-M Positions API Key (first 10 chars):', apiKey.substring(0, 10));

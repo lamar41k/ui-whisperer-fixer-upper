@@ -21,15 +21,20 @@ serve(async (req) => {
     }
 
     const timestamp = Date.now();
-    // Use correct USD-M Perpetual account endpoint
+    // Use the correct USD-M Perpetual account endpoint from documentation
     const path = '/g-accounts/accountPositions';
     const queryString = '?currency=USDT';
     const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex USD-M Perpetual documentation
-    // The message format should be: path + queryString + expiry (as string)
-    const message = path + queryString + expiry.toString();
+    // For USD-M Perpetual: method + path + queryString + expiry + body
+    const method = 'GET';
+    const body = '';
+    const message = method + path + queryString + expiry.toString() + body;
     console.log('USD-M Account signature message:', message);
+    console.log('USD-M Account method:', method);
+    console.log('USD-M Account path:', path);
+    console.log('USD-M Account queryString:', queryString);
     console.log('USD-M Account timestamp:', timestamp);
     console.log('USD-M Account expiry:', expiry);
     console.log('USD-M Account API Key (first 10 chars):', apiKey.substring(0, 10));
