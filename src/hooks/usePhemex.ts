@@ -13,7 +13,20 @@ export const usePhemex = () => {
 
   // Check connection status on mount
   useEffect(() => {
-    setIsConnected(phemexService.isConnected());
+    const checkConnection = async () => {
+      try {
+        const connected = await phemexService.testConnection();
+        setIsConnected(connected);
+        if (connected) {
+          await refreshData();
+        }
+      } catch (err) {
+        setIsConnected(false);
+        setError('Failed to connect to Phemex');
+      }
+    };
+    
+    checkConnection();
   }, []);
 
   const connect = useCallback(async (apiKey: string, apiSecret: string): Promise<boolean> => {
@@ -21,7 +34,7 @@ export const usePhemex = () => {
     setError(null);
 
     try {
-      phemexService.saveCredentials(apiKey, apiSecret);
+      // Since credentials are stored in Supabase secrets, we just test the connection
       const connectionTest = await phemexService.testConnection();
       
       if (connectionTest) {
@@ -29,13 +42,11 @@ export const usePhemex = () => {
         await refreshData();
         return true;
       } else {
-        phemexService.clearCredentials();
         setIsConnected(false);
-        setError('Failed to connect to Phemex API');
+        setError('Failed to connect to Phemex API. Please check your credentials in Supabase secrets.');
         return false;
       }
     } catch (err) {
-      phemexService.clearCredentials();
       setIsConnected(false);
       setError(err instanceof Error ? err.message : 'Connection failed');
       return false;
