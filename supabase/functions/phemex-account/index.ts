@@ -21,7 +21,7 @@ serve(async (req) => {
     }
 
     const timestamp = Date.now();
-    const path = '/accounts/accountPositions';
+    const path = '/g-accounts/accountPositions';
     const queryString = '?currency=BTC';
     const expiry = timestamp + 60000; // 1 minute expiry
     

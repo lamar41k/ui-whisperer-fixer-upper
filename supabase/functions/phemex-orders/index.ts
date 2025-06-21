@@ -19,12 +19,10 @@ serve(async (req) => {
       throw new Error('Phemex API credentials not configured');
     }
 
-    const url = new URL(req.url);
-    const symbol = url.searchParams.get('symbol');
-    const queryString = symbol ? `?symbol=${symbol}` : '';
-
+    // For futures orders, we don't need a symbol parameter - get all active orders
     const timestamp = Date.now();
-    const path = '/orders/activeList';
+    const path = '/g-orders/activeList';
+    const queryString = '?currency=BTC';
     const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex documentation
