@@ -25,12 +25,13 @@ serve(async (req) => {
     const queryString = '?currency=USDT';
     const expiry = timestamp + 60000; // 1 minute expiry
     
-    // Generate signature according to Phemex USD-M Perpetual documentation
-    // Format: path + queryString + expiry + body (no method for USD-M)
+    // For USD-M Perpetual: signature = HMAC-SHA256(apiSecret, GET + path + queryString + expiry)
+    const method = 'GET';
     const body = '';
-    const message = path + queryString + expiry.toString() + body;
+    const message = method + path + queryString + expiry.toString();
     
     console.log('USD-M Orders API Call Details:');
+    console.log('- Method:', method);
     console.log('- Path:', path);
     console.log('- Query String:', queryString);
     console.log('- Timestamp:', timestamp);
@@ -67,11 +68,13 @@ serve(async (req) => {
         'x-phemex-request-signature': signatureHex,
         'x-phemex-request-expiry': expiry.toString(),
         'Content-Type': 'application/json',
+        'User-Agent': 'Lovable-Trading-App/1.0'
       },
     });
 
     const responseText = await response.text();
     console.log('Response Status:', response.status);
+    console.log('Response Headers:', Object.fromEntries(response.headers.entries()));
     console.log('Response Body:', responseText);
 
     if (!response.ok) {
