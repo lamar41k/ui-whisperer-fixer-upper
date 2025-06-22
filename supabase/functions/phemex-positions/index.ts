@@ -26,17 +26,17 @@ serve(async (req) => {
     const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex USD-M Perpetual documentation
-    // For USD-M Perpetual: method + path + queryString + expiry + body
-    const method = 'GET';
+    // Format: path + queryString + expiry + body (no method for USD-M)
     const body = '';
-    const message = method + path + queryString + expiry.toString() + body;
-    console.log('USD-M Positions signature message:', message);
-    console.log('USD-M Positions method:', method);
-    console.log('USD-M Positions path:', path);
-    console.log('USD-M Positions queryString:', queryString);
-    console.log('USD-M Positions timestamp:', timestamp);
-    console.log('USD-M Positions expiry:', expiry);
-    console.log('USD-M Positions API Key (first 10 chars):', apiKey.substring(0, 10));
+    const message = path + queryString + expiry.toString() + body;
+    
+    console.log('USD-M Positions API Call Details:');
+    console.log('- Path:', path);
+    console.log('- Query String:', queryString);
+    console.log('- Timestamp:', timestamp);
+    console.log('- Expiry:', expiry);
+    console.log('- Signature Message:', message);
+    console.log('- API Key (first 10 chars):', apiKey.substring(0, 10));
     
     const encoder = new TextEncoder();
     const keyData = encoder.encode(apiSecret);
@@ -55,45 +55,50 @@ serve(async (req) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    console.log('Making request to Phemex USD-M Positions API with expiry:', expiry);
-    console.log('USD-M Positions signature:', signatureHex);
+    console.log('- Generated Signature:', signatureHex);
 
-    const response = await fetch(`https://api.phemex.com${path}${queryString}`, {
+    const apiUrl = `https://api.phemex.com${path}${queryString}`;
+    console.log('- Making request to:', apiUrl);
+
+    const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
         'x-phemex-access-token': apiKey,
         'x-phemex-request-signature': signatureHex,
         'x-phemex-request-expiry': expiry.toString(),
+        'Content-Type': 'application/json',
       },
     });
 
     const responseText = await response.text();
-    console.log('Phemex USD-M Positions API response status:', response.status);
-    console.log('Phemex USD-M Positions API raw response:', responseText);
+    console.log('Response Status:', response.status);
+    console.log('Response Body:', responseText);
 
     if (!response.ok) {
       throw new Error(`Phemex API error: ${response.status} ${responseText}`);
     }
 
     const data = JSON.parse(responseText);
-    console.log('Phemex USD-M Positions API parsed data:', JSON.stringify(data, null, 2));
+    console.log('Parsed Response:', JSON.stringify(data, null, 2));
 
     // Extract positions from USD-M Perpetual response
     let positions = [];
     if (data.data && data.data.positions) {
-      positions = data.data.positions.map((pos: any) => ({
-        symbol: pos.symbol,
-        side: pos.side,
-        size: (pos.sizeEv || 0) / 100000000, // Convert from Ev
-        value: (pos.valueEv || 0) / 100000000,
-        entryPrice: (pos.avgEntryPriceEv || 0) / 100000000,
-        markPrice: (pos.markPriceEv || 0) / 100000000,
-        unrealisedPnl: (pos.unrealisedPnlEv || 0) / 100000000,
-        unrealisedPnlPcnt: pos.unrealisedPnlPcnt || 0
-      }));
+      positions = data.data.positions
+        .filter((pos: any) => (pos.sizeEv || 0) !== 0) // Only non-zero positions
+        .map((pos: any) => ({
+          symbol: pos.symbol,
+          side: pos.side,
+          size: Math.abs((pos.sizeEv || 0) / 100000000), // Convert from Ev and get absolute size
+          value: Math.abs((pos.valueEv || 0) / 100000000),
+          entryPrice: (pos.avgEntryPriceEv || 0) / 100000000,
+          markPrice: (pos.markPriceEv || 0) / 100000000,
+          unrealisedPnl: (pos.unrealisedPnlEv || 0) / 100000000,
+          unrealisedPnlPcnt: pos.unrealisedPnlPcnt || 0
+        }));
     }
 
-    console.log('Final positions array:', JSON.stringify(positions, null, 2));
+    console.log('Final Positions Array:', JSON.stringify(positions, null, 2));
     
     return new Response(
       JSON.stringify({ data: { positions } }),

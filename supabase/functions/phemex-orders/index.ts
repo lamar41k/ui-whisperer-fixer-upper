@@ -26,17 +26,17 @@ serve(async (req) => {
     const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex USD-M Perpetual documentation
-    // For USD-M Perpetual: method + path + queryString + expiry + body
-    const method = 'GET';
+    // Format: path + queryString + expiry + body (no method for USD-M)
     const body = '';
-    const message = method + path + queryString + expiry.toString() + body;
-    console.log('USD-M Orders signature message:', message);
-    console.log('USD-M Orders method:', method);
-    console.log('USD-M Orders path:', path);
-    console.log('USD-M Orders queryString:', queryString);
-    console.log('USD-M Orders timestamp:', timestamp);
-    console.log('USD-M Orders expiry:', expiry);
-    console.log('USD-M Orders API Key (first 10 chars):', apiKey.substring(0, 10));
+    const message = path + queryString + expiry.toString() + body;
+    
+    console.log('USD-M Orders API Call Details:');
+    console.log('- Path:', path);
+    console.log('- Query String:', queryString);
+    console.log('- Timestamp:', timestamp);
+    console.log('- Expiry:', expiry);
+    console.log('- Signature Message:', message);
+    console.log('- API Key (first 10 chars):', apiKey.substring(0, 10));
     
     const encoder = new TextEncoder();
     const keyData = encoder.encode(apiSecret);
@@ -55,9 +55,10 @@ serve(async (req) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
+    console.log('- Generated Signature:', signatureHex);
+
     const apiUrl = `https://api.phemex.com${path}${queryString}`;
-    console.log('Making request to Phemex USD-M Orders API:', apiUrl, 'with expiry:', expiry);
-    console.log('USD-M Orders signature:', signatureHex);
+    console.log('- Making request to:', apiUrl);
     
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -65,19 +66,20 @@ serve(async (req) => {
         'x-phemex-access-token': apiKey,
         'x-phemex-request-signature': signatureHex,
         'x-phemex-request-expiry': expiry.toString(),
+        'Content-Type': 'application/json',
       },
     });
 
     const responseText = await response.text();
-    console.log('Phemex USD-M Orders API response status:', response.status);
-    console.log('Phemex USD-M Orders API raw response:', responseText);
+    console.log('Response Status:', response.status);
+    console.log('Response Body:', responseText);
 
     if (!response.ok) {
       throw new Error(`Phemex API error: ${response.status} ${responseText}`);
     }
 
     const data = JSON.parse(responseText);
-    console.log('Phemex USD-M Orders API parsed data:', JSON.stringify(data, null, 2));
+    console.log('Parsed Response:', JSON.stringify(data, null, 2));
 
     // Extract orders from USD-M Perpetual response
     let orders = [];
@@ -95,7 +97,7 @@ serve(async (req) => {
       }));
     }
 
-    console.log('Final orders array:', JSON.stringify(orders, null, 2));
+    console.log('Final Orders Array:', JSON.stringify(orders, null, 2));
     
     return new Response(
       JSON.stringify({ data: { rows: orders } }),

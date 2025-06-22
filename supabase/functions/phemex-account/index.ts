@@ -20,24 +20,24 @@ serve(async (req) => {
       throw new Error('Phemex API credentials not configured');
     }
 
+    // Use correct USD-M Perpetual wallet endpoint
     const timestamp = Date.now();
-    // Use the correct USD-M Perpetual account endpoint from documentation
-    const path = '/g-accounts/accountPositions';
+    const path = '/g-accounts/walletList';
     const queryString = '?currency=USDT';
     const expiry = timestamp + 60000; // 1 minute expiry
     
     // Generate signature according to Phemex USD-M Perpetual documentation
-    // For USD-M Perpetual: method + path + queryString + expiry + body
-    const method = 'GET';
+    // Format: path + queryString + expiry + body (no method for USD-M)
     const body = '';
-    const message = method + path + queryString + expiry.toString() + body;
-    console.log('USD-M Account signature message:', message);
-    console.log('USD-M Account method:', method);
-    console.log('USD-M Account path:', path);
-    console.log('USD-M Account queryString:', queryString);
-    console.log('USD-M Account timestamp:', timestamp);
-    console.log('USD-M Account expiry:', expiry);
-    console.log('USD-M Account API Key (first 10 chars):', apiKey.substring(0, 10));
+    const message = path + queryString + expiry.toString() + body;
+    
+    console.log('USD-M Account API Call Details:');
+    console.log('- Path:', path);
+    console.log('- Query String:', queryString);
+    console.log('- Timestamp:', timestamp);
+    console.log('- Expiry:', expiry);
+    console.log('- Signature Message:', message);
+    console.log('- API Key (first 10 chars):', apiKey.substring(0, 10));
     
     const encoder = new TextEncoder();
     const keyData = encoder.encode(apiSecret);
@@ -56,77 +56,56 @@ serve(async (req) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    console.log('Making request to Phemex USD-M Account API with expiry:', expiry);
-    console.log('USD-M Account signature:', signatureHex);
+    console.log('- Generated Signature:', signatureHex);
 
-    const response = await fetch(`https://api.phemex.com${path}${queryString}`, {
+    const apiUrl = `https://api.phemex.com${path}${queryString}`;
+    console.log('- Making request to:', apiUrl);
+    
+    const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
         'x-phemex-access-token': apiKey,
         'x-phemex-request-signature': signatureHex,
         'x-phemex-request-expiry': expiry.toString(),
+        'Content-Type': 'application/json',
       },
     });
 
     const responseText = await response.text();
-    console.log('Phemex USD-M Account API response status:', response.status);
-    console.log('Phemex USD-M Account API raw response:', responseText);
+    console.log('Response Status:', response.status);
+    console.log('Response Body:', responseText);
 
     if (!response.ok) {
       throw new Error(`Phemex API error: ${response.status} ${responseText}`);
     }
 
     const data = JSON.parse(responseText);
-    console.log('Phemex USD-M Account API parsed data:', JSON.stringify(data, null, 2));
-    
-    // Extract account information from USD-M Perpetual response
-    let account = null;
-    if (data.data && data.data.account) {
-      // Direct account data
-      const accountData = data.data.account;
-      account = {
-        accountID: accountData.accountId || 0,
-        currency: 'USDT',
-        totalEquity: (accountData.totalEquityEv || 0) / 100000000, // Convert from Ev to USDT
-        availableBalance: (accountData.availableBalanceEv || 0) / 100000000,
-        unrealisedPnl: (accountData.totalUnrealisedPnlEv || 0) / 100000000
-      };
-    } else if (data.data && data.data.positions && data.data.positions.length > 0) {
-      // Extract from positions if account field not available
-      const positions = data.data.positions;
-      const totalEquity = positions.reduce((sum: number, pos: any) => sum + (pos.accountBalanceEv || 0), 0) / 100000000;
-      const unrealisedPnl = positions.reduce((sum: number, pos: any) => sum + (pos.unrealisedPnlEv || 0), 0) / 100000000;
-      
-      account = {
-        accountID: positions[0]?.accountId || 0,
-        currency: 'USDT',
-        totalEquity: totalEquity,
-        availableBalance: totalEquity - unrealisedPnl,
-        unrealisedPnl: unrealisedPnl
-      };
-    } else if (data.data && data.data.accounts && data.data.accounts.length > 0) {
-      // Check for accounts array
-      const accountData = data.data.accounts[0];
-      account = {
-        accountID: accountData.accountId || 0,
-        currency: 'USDT',
-        totalEquity: (accountData.totalEquityEv || 0) / 100000000,
-        availableBalance: (accountData.availableBalanceEv || 0) / 100000000,
-        unrealisedPnl: (accountData.totalUnrealisedPnlEv || 0) / 100000000
-      };
-    } else {
-      // Create a default account structure if no data is available
-      console.log('No account data found, creating default structure');
-      account = {
-        accountID: 0,
-        currency: 'USDT',
-        totalEquity: 0,
-        availableBalance: 0,
-        unrealisedPnl: 0
-      };
+    console.log('Parsed Response:', JSON.stringify(data, null, 2));
+
+    // Extract account information from wallet response
+    let account = {
+      accountID: 0,
+      currency: 'USDT',
+      totalEquity: 0,
+      availableBalance: 0,
+      unrealisedPnl: 0
+    };
+
+    if (data.data && data.data.wallets && data.data.wallets.length > 0) {
+      // Find USDT wallet
+      const usdtWallet = data.data.wallets.find((wallet: any) => wallet.currency === 'USDT');
+      if (usdtWallet) {
+        account = {
+          accountID: data.data.accountId || 0,
+          currency: 'USDT',
+          totalEquity: (usdtWallet.totalBalanceEv || 0) / 100000000,
+          availableBalance: (usdtWallet.availableBalanceEv || 0) / 100000000,
+          unrealisedPnl: (usdtWallet.totalUnrealisedPnlEv || 0) / 100000000
+        };
+      }
     }
 
-    console.log('Final account object:', JSON.stringify(account, null, 2));
+    console.log('Final Account Object:', JSON.stringify(account, null, 2));
     
     return new Response(
       JSON.stringify({ data: { account } }),
