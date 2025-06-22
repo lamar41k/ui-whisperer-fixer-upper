@@ -6,6 +6,41 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Generate a UNIX timestamp ~1 min in the future
+function getExpiry() {
+  return Math.floor(Date.now() / 1000) + 60;
+}
+
+// Build the signature per Phemex spec: HMAC_SHA256(path + query + expiry + body)
+async function sign(path: string, queryString = '', body = '') {
+  const apiSecret = Deno.env.get('PHEMEX_API_SECRET');
+  if (!apiSecret) {
+    throw new Error('PHEMEX_API_SECRET not configured');
+  }
+
+  const expiry = getExpiry();
+  const payload = path + queryString + expiry + body;
+  
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(apiSecret);
+  const messageData = encoder.encode(payload);
+  
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  const signatureHex = Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+
+  return { expiry, signature: signatureHex };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -19,42 +54,22 @@ serve(async (req) => {
       throw new Error('Phemex API credentials not configured');
     }
 
-    const timestamp = Date.now();
-    const path = '/g-accounts/walletList';
-    const queryString = '?currency=USDT';
-    const expiry = timestamp + 60000; // 1 minute expiry
-    
-    // Correct signature format for USD-M Perpetual: path + queryString + expiry + body
+    // Use spot wallets endpoint for account balance
+    const path = '/spot/wallets';
+    const queryString = '';
     const body = '';
-    const message = path + queryString + expiry.toString() + body;
     
-    console.log('USD-M Account API Call Details:');
+    console.log('Phemex Spot Wallets API Call Details:');
     console.log('- Path:', path);
     console.log('- Query String:', queryString);
-    console.log('- Timestamp:', timestamp);
-    console.log('- Expiry:', expiry);
     console.log('- Body:', body);
-    console.log('- Signature Message:', message);
     console.log('- API Key (first 10 chars):', apiKey.substring(0, 10));
     
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(apiSecret);
-    const messageData = encoder.encode(message);
+    const { expiry, signature } = await sign(path, queryString, body);
     
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      keyData,
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    );
-    
-    const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
-    const signatureHex = Array.from(new Uint8Array(signature))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-
-    console.log('- Generated Signature:', signatureHex);
+    console.log('- Expiry (UNIX):', expiry);
+    console.log('- Signature Message:', path + queryString + expiry + body);
+    console.log('- Generated Signature:', signature);
 
     const apiUrl = `https://api.phemex.com${path}${queryString}`;
     console.log('- Making request to:', apiUrl);
@@ -63,7 +78,7 @@ serve(async (req) => {
       method: 'GET',
       headers: {
         'x-phemex-access-token': apiKey,
-        'x-phemex-request-signature': signatureHex,
+        'x-phemex-request-signature': signature,
         'x-phemex-request-expiry': expiry.toString(),
         'Content-Type': 'application/json',
       },
@@ -81,7 +96,12 @@ serve(async (req) => {
     const data = JSON.parse(responseText);
     console.log('Parsed Response:', JSON.stringify(data, null, 2));
 
-    // Extract account information from wallet response
+    // Check for Phemex API error code
+    if (data.code !== 0) {
+      throw new Error(`Phemex API error ${data.code}: ${data.msg}`);
+    }
+
+    // Extract account information from spot wallets response
     let account = {
       accountID: 0,
       currency: 'USDT',
@@ -90,16 +110,16 @@ serve(async (req) => {
       unrealisedPnl: 0
     };
 
-    if (data.data && data.data.wallets && data.data.wallets.length > 0) {
-      // Find USDT wallet
-      const usdtWallet = data.data.wallets.find((wallet: any) => wallet.currency === 'USDT');
+    if (data.data && Array.isArray(data.data)) {
+      // Find USDT wallet in spot wallets
+      const usdtWallet = data.data.find((wallet: any) => wallet.currency === 'USDT');
       if (usdtWallet) {
         account = {
-          accountID: data.data.accountId || 0,
+          accountID: usdtWallet.userId || 0,
           currency: 'USDT',
-          totalEquity: (usdtWallet.totalBalanceEv || 0) / 100000000,
-          availableBalance: (usdtWallet.availableBalanceEv || 0) / 100000000,
-          unrealisedPnl: (usdtWallet.totalUnrealisedPnlEv || 0) / 100000000
+          totalEquity: parseFloat(usdtWallet.balance || '0'),
+          availableBalance: parseFloat(usdtWallet.balance || '0'),
+          unrealisedPnl: 0 // Spot doesn't have unrealized PnL
         };
       }
     }
