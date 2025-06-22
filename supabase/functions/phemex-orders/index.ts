@@ -54,8 +54,9 @@ serve(async (req) => {
       throw new Error('Phemex API credentials not configured');
     }
 
-    const path = '/g-orders/activeList';
-    const queryString = '?currency=USDT';
+    // Use spot orders endpoint for active orders
+    const path = '/spot/orders/active';
+    const queryString = '?symbol=sBTCUSDT'; // Example symbol - you may want to make this configurable
     const body = '';
     
     console.log('Phemex Orders API Call Details:');
@@ -100,19 +101,19 @@ serve(async (req) => {
       throw new Error(`Phemex API error ${data.code}: ${data.msg}`);
     }
 
-    // Extract orders from USD-M Perpetual response
+    // Extract orders from spot orders response
     let orders = [];
     if (data.data && data.data.rows) {
       orders = data.data.rows.map((order: any) => ({
-        orderID: order.orderID,
+        orderID: order.orderID || order.clOrdID,
         symbol: order.symbol,
         side: order.side,
-        ordType: order.ordType,
-        price: parseFloat(order.price || '0'),
-        orderQty: parseFloat(order.orderQty || '0'),
-        cumQty: parseFloat(order.cumQty || '0'),
-        ordStatus: order.ordStatus,
-        transactTime: order.transactTime ? parseInt(order.transactTime) : Date.now()
+        ordType: order.ordType || order.orderType,
+        price: parseFloat(order.priceEp ? (order.priceEp / 100000000).toString() : order.price || '0'),
+        orderQty: parseFloat(order.orderQtyEq ? (order.orderQtyEq / 100000000).toString() : order.orderQty || '0'),
+        cumQty: parseFloat(order.cumQtyEq ? (order.cumQtyEq / 100000000).toString() : order.cumQty || '0'),
+        ordStatus: order.ordStatus || order.orderStatus,
+        transactTime: order.transactTimeNs ? Math.floor(parseInt(order.transactTimeNs) / 1000000) : Date.now()
       }));
     }
 
