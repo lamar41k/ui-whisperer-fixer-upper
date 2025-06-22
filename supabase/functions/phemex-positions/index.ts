@@ -20,19 +20,20 @@ serve(async (req) => {
     }
 
     const timestamp = Date.now();
-    // Use correct USD-M Perpetual positions endpoint
     const path = '/g-accounts/accountPositions';
     const queryString = '?currency=USDT';
     const expiry = timestamp + 60000; // 1 minute expiry
     
-    // Correct USD-M Perpetual signature format: path + queryString + expiry
-    const message = path + queryString + expiry.toString();
+    // Correct signature format for USD-M Perpetual: path + queryString + expiry + body
+    const body = '';
+    const message = path + queryString + expiry.toString() + body;
     
     console.log('USD-M Positions API Call Details:');
     console.log('- Path:', path);
     console.log('- Query String:', queryString);
     console.log('- Timestamp:', timestamp);
     console.log('- Expiry:', expiry);
+    console.log('- Body:', body);
     console.log('- Signature Message:', message);
     console.log('- API Key (first 10 chars):', apiKey.substring(0, 10));
     
