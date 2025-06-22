@@ -25,13 +25,10 @@ serve(async (req) => {
     const queryString = '?currency=USDT';
     const expiry = timestamp + 60000; // 1 minute expiry
     
-    // For USD-M Perpetual: signature = HMAC-SHA256(apiSecret, GET + path + queryString + expiry)
-    const method = 'GET';
-    const body = '';
-    const message = method + path + queryString + expiry.toString();
+    // Correct USD-M Perpetual signature format: path + queryString + expiry
+    const message = path + queryString + expiry.toString();
     
     console.log('USD-M Positions API Call Details:');
-    console.log('- Method:', method);
     console.log('- Path:', path);
     console.log('- Query String:', queryString);
     console.log('- Timestamp:', timestamp);
@@ -68,7 +65,6 @@ serve(async (req) => {
         'x-phemex-request-signature': signatureHex,
         'x-phemex-request-expiry': expiry.toString(),
         'Content-Type': 'application/json',
-        'User-Agent': 'Lovable-Trading-App/1.0'
       },
     });
 
