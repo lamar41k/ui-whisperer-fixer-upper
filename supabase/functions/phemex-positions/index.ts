@@ -11,6 +11,31 @@ function getExpiry() {
   return Math.floor(Date.now() / 1000) + 60;
 }
 
+// Convert ArrayBuffer to hex string
+function toHex(buffer: ArrayBuffer) {
+  return Array.from(new Uint8Array(buffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+// HMAC-SHA256 via Web Crypto API
+async function hmacSHA256(secret: string, data: string) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    encoder.encode(data)
+  );
+  return toHex(signature);
+}
+
 // Build the signature per Phemex spec: HMAC_SHA256(path + query + expiry + body)
 async function sign(path: string, queryString = '', body = '') {
   const apiSecret = Deno.env.get('PHEMEX_API_SECRET');
@@ -20,25 +45,9 @@ async function sign(path: string, queryString = '', body = '') {
 
   const expiry = getExpiry();
   const payload = path + queryString + expiry + body;
-  
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(apiSecret);
-  const messageData = encoder.encode(payload);
-  
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
-  const signatureHex = Array.from(new Uint8Array(signature))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
+  const signature = await hmacSHA256(apiSecret, payload);
 
-  return { expiry, signature: signatureHex };
+  return { expiry, signature };
 }
 
 serve(async (req) => {
@@ -89,14 +98,23 @@ serve(async (req) => {
     console.log('Response Body:', responseText);
 
     if (!response.ok) {
-      throw new Error(`Phemex API error: ${response.status} ${responseText}`);
+      console.error(`Phemex HTTP ${response.status} on ${path}`, responseText);
+      throw new Error(`HTTP ${response.status}: ${responseText}`);
     }
 
-    const data = JSON.parse(responseText);
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error('Failed to parse JSON:', responseText);
+      throw e;
+    }
+
     console.log('Parsed Response:', JSON.stringify(data, null, 2));
 
     // Check for Phemex API error code
     if (data.code !== 0) {
+      console.error(`Phemex API error ${data.code} on ${path}`, data);
       throw new Error(`Phemex API error ${data.code}: ${data.msg}`);
     }
 
