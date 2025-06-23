@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Settings, Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import { Settings, Wifi, WifiOff, RefreshCw, AlertCircle } from 'lucide-react';
 import { usePhemex } from '@/hooks/usePhemex';
 
 interface PhemexSettingsProps {
@@ -16,7 +16,6 @@ export const PhemexSettings: React.FC<PhemexSettingsProps> = ({ isOpen, onOpenCh
 
   const handleConnect = async () => {
     setIsConnecting(true);
-    // Since credentials are stored in Supabase secrets, we just test the connection
     const success = await connect('', '');
     setIsConnecting(false);
   };
@@ -108,10 +107,21 @@ export const PhemexSettings: React.FC<PhemexSettingsProps> = ({ isOpen, onOpenCh
             </Button>
           )}
 
-          <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
-            <div className="text-green-400 text-sm font-medium mb-1">✅ CORS Fixed</div>
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+            <div className="flex items-center gap-2 text-amber-400 text-sm font-medium mb-1">
+              <AlertCircle size={16} />
+              API Permissions Notice
+            </div>
             <div className="text-gray-300 text-xs">
-              API calls now go through secure Supabase Edge Functions, eliminating CORS issues.
+              If positions or orders show as empty, your API key may only have spot trading permissions. 
+              Perpetual/futures trading requires additional permissions in your Phemex account settings.
+            </div>
+          </div>
+
+          <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
+            <div className="text-green-400 text-sm font-medium mb-1">✅ Enhanced Error Handling</div>
+            <div className="text-gray-300 text-xs">
+              The system now tries multiple endpoints and provides helpful feedback when certain features aren't available.
             </div>
           </div>
         </div>

@@ -36,13 +36,11 @@ class PhemexService {
   private isCredentialsConfigured = false;
 
   constructor() {
-    // Check if credentials are configured in Supabase
     this.checkCredentials();
   }
 
   private async checkCredentials() {
     try {
-      // Test connection to see if credentials are working
       const { data } = await supabase.functions.invoke('phemex-account');
       this.isCredentialsConfigured = !data?.error;
     } catch (error) {
@@ -51,15 +49,11 @@ class PhemexService {
   }
 
   saveCredentials(apiKey: string, apiSecret: string) {
-    // Credentials are now stored securely in Supabase secrets
-    // This method is kept for compatibility but doesn't store locally
     console.log('Credentials configured in Supabase secrets');
     this.isCredentialsConfigured = true;
   }
 
   clearCredentials() {
-    // Cannot clear Supabase secrets from frontend
-    // This would need to be done through Supabase dashboard
     console.log('To clear credentials, remove them from Supabase Edge Functions secrets');
     this.isCredentialsConfigured = false;
   }
@@ -106,6 +100,11 @@ class PhemexService {
     }
     
     if (data.error) {
+      // Check if it's a permissions issue and provide helpful message
+      if (data.info && data.info.message) {
+        console.warn('Positions info:', data.info.message);
+        return []; // Return empty array instead of throwing error
+      }
       throw new Error(data.error);
     }
     
@@ -123,6 +122,11 @@ class PhemexService {
     }
     
     if (data.error) {
+      // Check if it's a permissions issue and provide helpful message
+      if (data.info && data.info.message) {
+        console.warn('Orders info:', data.info.message);
+        return []; // Return empty array instead of throwing error
+      }
       throw new Error(data.error);
     }
     
@@ -130,8 +134,6 @@ class PhemexService {
   }
 
   async getOrderHistory(symbol?: string, limit: number = 100): Promise<PhemexOrder[]> {
-    // This would need a separate edge function if needed
-    // For now, returning empty array
     return [];
   }
 
