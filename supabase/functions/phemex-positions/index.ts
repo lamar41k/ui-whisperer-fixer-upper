@@ -36,67 +36,18 @@ async function hmacSHA256(secret: string, data: string) {
   return toHex(signature);
 }
 
-// Generic signed fetch function
-async function signedFetch(path: string, queryString = '', body = '') {
-  const apiKey = Deno.env.get('PHEMEX_API_KEY');
+// Build the signature per Phemex spec: HMAC_SHA256(path + query + expiry + body)
+async function sign(path: string, queryString = '', body = '') {
   const apiSecret = Deno.env.get('PHEMEX_API_SECRET');
-
-  if (!apiKey || !apiSecret) {
-    throw new Error('Phemex API credentials not configured');
+  if (!apiSecret) {
+    throw new Error('PHEMEX_API_SECRET not configured');
   }
 
   const expiry = getExpiry();
   const payload = path + queryString + expiry + body;
   const signature = await hmacSHA256(apiSecret, payload);
 
-  console.log('Signed Fetch Details:');
-  console.log('- Path:', path);
-  console.log('- Query String:', queryString);
-  console.log('- Body:', body);
-  console.log('- Expiry (UNIX):', expiry);
-  console.log('- Payload for signature:', payload);
-  console.log('- Generated Signature:', signature);
-
-  const apiUrl = `https://api.phemex.com${path}${queryString}`;
-  console.log('- Making request to:', apiUrl);
-
-  const response = await fetch(apiUrl, {
-    method: 'GET',
-    headers: {
-      'x-phemex-access-token': apiKey,
-      'x-phemex-request-signature': signature,
-      'x-phemex-request-expiry': expiry.toString(),
-      'Content-Type': 'application/json',
-    },
-  });
-
-  const responseText = await response.text();
-  console.log('Response Status:', response.status);
-  console.log('Response Headers:', Object.fromEntries(response.headers.entries()));
-  console.log('Response Body:', responseText);
-
-  if (!response.ok) {
-    console.error(`Phemex HTTP ${response.status} on ${path}`, responseText);
-    throw new Error(`HTTP ${response.status}: ${responseText}`);
-  }
-
-  let data;
-  try {
-    data = JSON.parse(responseText);
-  } catch (e) {
-    console.error('Failed to parse JSON:', responseText);
-    throw e;
-  }
-
-  console.log('Parsed Response:', JSON.stringify(data, null, 2));
-
-  // Check for Phemex API error code
-  if (data.code !== 0) {
-    console.error(`Phemex API error ${data.code} on ${path}`, data);
-    throw new Error(`Phemex API error ${data.code}: ${data.msg}`);
-  }
-
-  return data.data;
+  return { expiry, signature };
 }
 
 serve(async (req) => {
@@ -105,18 +56,75 @@ serve(async (req) => {
   }
 
   try {
+    const apiKey = Deno.env.get('PHEMEX_API_KEY');
+    const apiSecret = Deno.env.get('PHEMEX_API_SECRET');
+
+    if (!apiKey || !apiSecret) {
+      throw new Error('Phemex API credentials not configured');
+    }
+
     console.log('Fetching Phemex positions...');
 
     // Use the perpetual positions endpoint
     const path = '/g-accounts/accountPositions';
     const queryString = '?currency=USDT';
+    const body = '';
     
-    const data = await signedFetch(path, queryString);
+    console.log('Phemex Positions API Call Details:');
+    console.log('- Path:', path);
+    console.log('- Query String:', queryString);
+    console.log('- Body:', body);
+    console.log('- API Key (first 10 chars):', apiKey.substring(0, 10));
+    
+    const { expiry, signature } = await sign(path, queryString, body);
+    
+    console.log('- Expiry (UNIX):', expiry);
+    console.log('- Signature Message:', path + queryString + expiry + body);
+    console.log('- Generated Signature:', signature);
+
+    const apiUrl = `https://api.phemex.com${path}${queryString}`;
+    console.log('- Making request to:', apiUrl);
+    
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'x-phemex-access-token': apiKey,
+        'x-phemex-request-signature': signature,
+        'x-phemex-request-expiry': expiry.toString(),
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const responseText = await response.text();
+    console.log('Response Status:', response.status);
+    console.log('Response Headers:', Object.fromEntries(response.headers.entries()));
+    console.log('Response Body:', responseText);
+
+    if (!response.ok) {
+      console.error(`Phemex HTTP ${response.status} on ${path}`, responseText);
+      throw new Error(`HTTP ${response.status}: ${responseText}`);
+    }
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error('Failed to parse JSON:', responseText);
+      throw e;
+    }
+
+    console.log('Parsed Response:', JSON.stringify(data, null, 2));
+
+    // Check for Phemex API error code
+    if (data.code !== 0) {
+      console.error(`Phemex API error ${data.code} on ${path}`, data);
+      throw new Error(`Phemex API error ${data.code}: ${data.msg}`);
+    }
 
     // Extract positions from USD-M Perpetual response and filter non-zero positions
     let positions = [];
-    if (data && data.positions) {
-      positions = data.positions
+    if (data.data && data.data.positions) {
+      positions = data.data.positions
         .filter((pos: any) => parseFloat(pos.size || '0') !== 0) // Only non-zero positions
         .map((pos: any) => ({
           symbol: pos.symbol,
