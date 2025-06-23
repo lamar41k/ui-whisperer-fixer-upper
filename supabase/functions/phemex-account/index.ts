@@ -50,6 +50,62 @@ async function sign(path: string, queryString = '', body = '') {
   return { expiry, signature };
 }
 
+// Currency scaling factors for Phemex (how to convert balanceEv to actual balance)
+const CURRENCY_SCALES = {
+  'USDT': 1e8,
+  'USD': 1e8,
+  'BTC': 1e8,
+  'ETH': 1e8,
+  'XRP': 1e6,
+  'LINK': 1e6,
+  'ADA': 1e6,
+  'DOT': 1e6,
+  'SOL': 1e6,
+  'MATIC': 1e6,
+  'AVAX': 1e6,
+  'NEAR': 1e6,
+  'SUI': 1e6,
+  'TON': 1e6,
+  'TRX': 1e6,
+  'MKR': 1e6,
+  'IMX': 1e6,
+  'INJ': 1e6,
+  'HNT': 1e6,
+  'WIF': 1e6,
+  'JUP': 1e6,
+  'BLAST': 1e6,
+  'POL': 1e6,
+  'USDC': 1e8
+};
+
+// Simple price estimates (you might want to fetch real prices from an API)
+const APPROXIMATE_USD_PRICES = {
+  'USDT': 1,
+  'USD': 1,
+  'USDC': 1,
+  'BTC': 43000,
+  'ETH': 2300,
+  'XRP': 0.6,
+  'LINK': 14,
+  'ADA': 0.4,
+  'DOT': 7,
+  'SOL': 60,
+  'MATIC': 0.8,
+  'AVAX': 25,
+  'NEAR': 2,
+  'SUI': 1.8,
+  'TON': 2.2,
+  'TRX': 0.1,
+  'MKR': 1500,
+  'IMX': 1.2,
+  'INJ': 20,
+  'HNT': 3,
+  'WIF': 2,
+  'JUP': 0.8,
+  'BLAST': 0.02,
+  'POL': 0.4
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -122,30 +178,53 @@ serve(async (req) => {
     // Extract account information from spot wallets response
     let account = {
       accountID: 0,
-      currency: 'USDT',
+      currency: 'USD',
       totalEquity: 0,
       availableBalance: 0,
       unrealisedPnl: 0
     };
 
     if (data.data && Array.isArray(data.data)) {
-      // Calculate total equity from all currencies
-      let totalEquity = 0;
+      let totalEquityUSD = 0;
       let usdtBalance = 0;
+      const balanceDetails: any[] = [];
       
       for (const wallet of data.data) {
-        if (wallet.currency === 'USDT') {
-          // USDT balance is in Ev (scaled by 1e8)
-          usdtBalance = parseFloat(wallet.balanceEv || '0') / 100000000;
+        const currency = wallet.currency;
+        const balanceEv = parseFloat(wallet.balanceEv || '0');
+        
+        if (balanceEv > 0) {
+          // Get the scaling factor for this currency
+          const scale = CURRENCY_SCALES[currency] || 1e8;
+          const actualBalance = balanceEv / scale;
+          
+          // Get approximate USD value
+          const usdPrice = APPROXIMATE_USD_PRICES[currency] || 0;
+          const usdValue = actualBalance * usdPrice;
+          
+          console.log(`${currency}: ${balanceEv} balanceEv -> ${actualBalance} ${currency} -> $${usdValue.toFixed(2)} USD`);
+          
+          totalEquityUSD += usdValue;
+          
+          if (currency === 'USDT') {
+            usdtBalance = actualBalance;
+          }
+          
+          balanceDetails.push({
+            currency,
+            balance: actualBalance,
+            usdValue: usdValue
+          });
         }
-        // Add more currency conversions here if needed
-        totalEquity += usdtBalance; // For now, just use USDT
       }
+
+      console.log('Balance Details:', balanceDetails);
+      console.log('Total Equity USD:', totalEquityUSD);
 
       account = {
         accountID: data.data[0]?.userId || 0,
-        currency: 'USDT',
-        totalEquity: totalEquity,
+        currency: 'USD',
+        totalEquity: totalEquityUSD,
         availableBalance: usdtBalance,
         unrealisedPnl: 0 // Spot doesn't have unrealized PnL
       };
