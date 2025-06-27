@@ -44,7 +44,9 @@ async function sign(path: string, queryString = '', body = '') {
   }
 
   const expiry = getExpiry();
-  const payload = path + queryString + expiry + body;
+  // Fixed: Remove the leading ? from queryString when constructing payload
+  const cleanQuery = queryString.startsWith('?') ? queryString.substring(1) : queryString;
+  const payload = path + cleanQuery + expiry + body;
   const signature = await hmacSHA256(apiSecret, payload);
 
   return { expiry, signature };
@@ -63,25 +65,19 @@ serve(async (req) => {
       throw new Error('Phemex API credentials not configured');
     }
 
-    // Use futures account endpoint instead of spot wallets
-    const path = '/accounts/accountPositions';
-    const queryString = '?currency=USD';
-    const body = '';
-    
-    console.log('Phemex Futures Account API Call Details:');
-    console.log('- Path:', path);
-    console.log('- Query String:', queryString);
-    console.log('- Body:', body);
-    console.log('- API Key (first 10 chars):', apiKey.substring(0, 10));
-    
-    const { expiry, signature } = await sign(path, queryString, body);
-    
-    console.log('- Expiry (UNIX):', expiry);
-    console.log('- Signature Message:', path + queryString + expiry + body);
-    console.log('- Generated Signature:', signature);
+    console.log('Fetching Phemex futures account...');
 
-    const apiUrl = `https://api.phemex.com${path}${queryString}`;
-    console.log('- Making request to:', apiUrl);
+    // Use correct futures account endpoint
+    const path = '/accounts/accountPositions';
+    const queryString = 'currency=USD'; // Remove the leading ?
+    
+    console.log(`Making request to: ${path}?${queryString}`);
+    
+    const { expiry, signature } = await sign(path, queryString, '');
+    
+    const apiUrl = `https://api.phemex.com${path}?${queryString}`;
+    console.log(`Full URL: ${apiUrl}`);
+    console.log(`Signature payload: ${path}${queryString}${expiry}`);
     
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -94,12 +90,11 @@ serve(async (req) => {
     });
 
     const responseText = await response.text();
-    console.log('Response Status:', response.status);
-    console.log('Response Headers:', Object.fromEntries(response.headers.entries()));
-    console.log('Response Body:', responseText);
+    console.log(`Response Status: ${response.status}`);
+    console.log(`Response Body:`, responseText);
 
     if (!response.ok) {
-      console.error(`Phemex HTTP ${response.status} on ${path}`, responseText);
+      console.error(`Failed: HTTP ${response.status}`);
       throw new Error(`HTTP ${response.status}: ${responseText}`);
     }
 
@@ -107,17 +102,17 @@ serve(async (req) => {
     try {
       data = JSON.parse(responseText);
     } catch (e) {
-      console.error('Failed to parse JSON:', responseText);
-      throw e;
+      console.error(`Failed to parse JSON:`, responseText);
+      throw new Error('Invalid JSON response');
     }
-
-    console.log('Parsed Response:', JSON.stringify(data, null, 2));
 
     // Check for Phemex API error code
     if (data.code !== 0) {
-      console.error(`Phemex API error ${data.code} on ${path}`, data);
+      console.error(`Phemex API error ${data.code}:`, data);
       throw new Error(`Phemex API error ${data.code}: ${data.msg}`);
     }
+
+    console.log(`Success:`, JSON.stringify(data, null, 2));
 
     // Extract futures account information
     let account = {
@@ -135,12 +130,6 @@ serve(async (req) => {
       const totalEquityEv = parseFloat(accountData.accountBalanceEv || '0');
       const availableBalanceEv = parseFloat(accountData.totalAvailableBalanceEv || '0');
       const unrealisedPnlEv = parseFloat(accountData.totalUnrealisedPnlEv || '0');
-      
-      console.log('Raw Account Data:', {
-        totalEquityEv,
-        availableBalanceEv,
-        unrealisedPnlEv
-      });
 
       account = {
         accountID: parseInt(accountData.accountId || '0'),
@@ -149,8 +138,6 @@ serve(async (req) => {
         availableBalance: availableBalanceEv / 1e8,
         unrealisedPnl: unrealisedPnlEv / 1e8
       };
-      
-      console.log('Converted Account Data:', account);
     }
 
     console.log('Final Account Object:', JSON.stringify(account, null, 2));

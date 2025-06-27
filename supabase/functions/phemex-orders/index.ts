@@ -44,7 +44,9 @@ async function sign(path: string, queryString = '', body = '') {
   }
 
   const expiry = getExpiry();
-  const payload = path + queryString + expiry + body;
+  // Fixed: Remove the leading ? from queryString when constructing payload
+  const cleanQuery = queryString.startsWith('?') ? queryString.substring(1) : queryString;
+  const payload = path + cleanQuery + expiry + body;
   const signature = await hmacSHA256(apiSecret, payload);
 
   return { expiry, signature };
@@ -67,14 +69,15 @@ serve(async (req) => {
 
     // Use correct futures orders endpoint
     const path = '/exchange/order/list';
-    const queryString = '?currency=USD&ordStatus=New'; // Active orders only
+    const queryString = 'currency=USD&ordStatus=New'; // Remove the leading ?
     
-    console.log(`Making request to: ${path}${queryString}`);
+    console.log(`Making request to: ${path}?${queryString}`);
     
     const { expiry, signature } = await sign(path, queryString, '');
     
-    const apiUrl = `https://api.phemex.com${path}${queryString}`;
+    const apiUrl = `https://api.phemex.com${path}?${queryString}`;
     console.log(`Full URL: ${apiUrl}`);
+    console.log(`Signature payload: ${path}${queryString}${expiry}`);
     
     const response = await fetch(apiUrl, {
       method: 'GET',
