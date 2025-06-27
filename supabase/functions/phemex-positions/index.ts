@@ -63,112 +63,78 @@ serve(async (req) => {
       throw new Error('Phemex API credentials not configured');
     }
 
-    console.log('Trying to fetch Phemex positions...');
+    console.log('Fetching Phemex futures positions...');
 
-    // Try multiple endpoints to find which one works with the current API key
-    const endpoints = [
-      { path: '/g-accounts/accountPositions', query: '?currency=USDT', type: 'perpetual' },
-      { path: '/accounts/accountPositions', query: '?currency=USDT', type: 'futures' },
-      { path: '/api-data/futures/funding-fees', query: '', type: 'funding' }
-    ];
+    // Use correct futures positions endpoint
+    const path = '/accounts/positions';
+    const queryString = '?currency=USD';
+    
+    console.log(`Making request to: ${path}${queryString}`);
+    
+    const { expiry, signature } = await sign(path, queryString, '');
+    
+    const apiUrl = `https://api.phemex.com${path}${queryString}`;
+    console.log(`Full URL: ${apiUrl}`);
+    
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'x-phemex-access-token': apiKey,
+        'x-phemex-request-signature': signature,
+        'x-phemex-request-expiry': expiry.toString(),
+        'Content-Type': 'application/json',
+      },
+    });
 
-    let positions = [];
-    let lastError = null;
+    const responseText = await response.text();
+    console.log(`Response Status: ${response.status}`);
+    console.log(`Response Body:`, responseText);
 
-    for (const endpoint of endpoints) {
-      try {
-        console.log(`Trying endpoint: ${endpoint.path}${endpoint.query}`);
-        
-        const { expiry, signature } = await sign(endpoint.path, endpoint.query, '');
-        
-        const apiUrl = `https://api.phemex.com${endpoint.path}${endpoint.query}`;
-        console.log(`Making request to: ${apiUrl}`);
-        
-        const response = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'x-phemex-access-token': apiKey,
-            'x-phemex-request-signature': signature,
-            'x-phemex-request-expiry': expiry.toString(),
-            'Content-Type': 'application/json',
-          },
-        });
-
-        const responseText = await response.text();
-        console.log(`Response Status for ${endpoint.path}: ${response.status}`);
-        console.log(`Response Body for ${endpoint.path}:`, responseText);
-
-        if (!response.ok) {
-          console.log(`Failed ${endpoint.path}: HTTP ${response.status}`);
-          lastError = `HTTP ${response.status}: ${responseText}`;
-          continue;
-        }
-
-        let data;
-        try {
-          data = JSON.parse(responseText);
-        } catch (e) {
-          console.log(`Failed to parse JSON for ${endpoint.path}:`, responseText);
-          lastError = 'Invalid JSON response';
-          continue;
-        }
-
-        // Check for Phemex API error code
-        if (data.code !== 0) {
-          console.log(`Phemex API error ${data.code} for ${endpoint.path}:`, data);
-          lastError = `Phemex API error ${data.code}: ${data.msg}`;
-          continue;
-        }
-
-        // Successfully got data from this endpoint
-        console.log(`Success with endpoint ${endpoint.path}:`, JSON.stringify(data, null, 2));
-
-        // Extract positions based on endpoint type
-        if (endpoint.type === 'perpetual' || endpoint.type === 'futures') {
-          if (data.data && data.data.positions) {
-            positions = data.data.positions
-              .filter((pos: any) => parseFloat(pos.size || '0') !== 0)
-              .map((pos: any) => ({
-                symbol: pos.symbol,
-                side: parseFloat(pos.size || '0') > 0 ? 'Buy' : 'Sell',
-                size: Math.abs(parseFloat(pos.size || '0')),
-                value: Math.abs(parseFloat(pos.value || '0')),
-                entryPrice: parseFloat(pos.avgEntryPrice || '0'),
-                markPrice: parseFloat(pos.markPrice || '0'),
-                unrealisedPnl: parseFloat(pos.unrealisedPnl || '0'),
-                unrealisedPnlPcnt: parseFloat(pos.unrealisedPnlPcnt || '0')
-              }));
-          }
-        }
-
-        // If we got here, we found a working endpoint
-        break;
-
-      } catch (error) {
-        console.log(`Error with endpoint ${endpoint.path}:`, error);
-        lastError = error.message;
-      }
+    if (!response.ok) {
+      console.error(`Failed: HTTP ${response.status}`);
+      throw new Error(`HTTP ${response.status}: ${responseText}`);
     }
 
-    // If no endpoints worked, return helpful error message
-    if (positions.length === 0 && lastError) {
-      console.log('All position endpoints failed, returning fallback response');
-      return new Response(
-        JSON.stringify({ 
-          data: { positions: [] },
-          info: {
-            message: 'No positions found. This may be because your API key only has spot trading permissions, not perpetual/futures permissions.',
-            lastError: lastError,
-            suggestion: 'Check your Phemex API key permissions in your account settings.'
-          }
-        }),
-        { 
-          headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json' 
-          } 
-        }
-      );
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error(`Failed to parse JSON:`, responseText);
+      throw new Error('Invalid JSON response');
+    }
+
+    // Check for Phemex API error code
+    if (data.code !== 0) {
+      console.error(`Phemex API error ${data.code}:`, data);
+      throw new Error(`Phemex API error ${data.code}: ${data.msg}`);
+    }
+
+    console.log(`Success:`, JSON.stringify(data, null, 2));
+
+    let positions = [];
+    
+    // Extract positions from futures response
+    if (data.data && data.data.positions && Array.isArray(data.data.positions)) {
+      positions = data.data.positions
+        .filter((pos: any) => parseFloat(pos.sizeEv || '0') !== 0) // Only active positions
+        .map((pos: any) => {
+          const sizeEv = parseFloat(pos.sizeEv || '0');
+          const valueEv = parseFloat(pos.valueEv || '0');
+          const avgEntryPriceEv = parseFloat(pos.avgEntryPriceEv || '0');
+          const markPriceEv = parseFloat(pos.markPriceEv || '0');
+          const unrealisedPnlEv = parseFloat(pos.unrealisedPnlEv || '0');
+          
+          return {
+            symbol: pos.symbol,
+            side: sizeEv > 0 ? 'Buy' : 'Sell',
+            size: Math.abs(sizeEv / 1e8), // Convert from Ev scale
+            value: Math.abs(valueEv / 1e8),
+            entryPrice: avgEntryPriceEv / 1e8,
+            markPrice: markPriceEv / 1e8,
+            unrealisedPnl: unrealisedPnlEv / 1e8,
+            unrealisedPnlPcnt: parseFloat(pos.unrealisedPnlPcnt || '0') / 1e6 // Percentage in basis points
+          };
+        });
     }
 
     console.log('Final Positions Array:', JSON.stringify(positions, null, 2));
@@ -189,8 +155,8 @@ serve(async (req) => {
       JSON.stringify({ 
         error: error.message,
         info: {
-          message: 'Unable to fetch positions. This may be due to API key permissions.',
-          suggestion: 'Ensure your Phemex API key has the necessary permissions for the endpoints you are trying to access.'
+          message: 'Unable to fetch futures positions. Check API key permissions.',
+          suggestion: 'Ensure your Phemex API key has futures trading permissions enabled.'
         }
       }),
       { 

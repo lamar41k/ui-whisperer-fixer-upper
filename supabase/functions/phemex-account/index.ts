@@ -50,62 +50,6 @@ async function sign(path: string, queryString = '', body = '') {
   return { expiry, signature };
 }
 
-// Currency scaling factors for Phemex (how to convert balanceEv to actual balance)
-const CURRENCY_SCALES = {
-  'USDT': 1e8,
-  'USD': 1e8,
-  'BTC': 1e8,
-  'ETH': 1e8,
-  'XRP': 1e6,
-  'LINK': 1e6,
-  'ADA': 1e6,
-  'DOT': 1e6,
-  'SOL': 1e6,
-  'MATIC': 1e6,
-  'AVAX': 1e6,
-  'NEAR': 1e6,
-  'SUI': 1e6,
-  'TON': 1e6,
-  'TRX': 1e6,
-  'MKR': 1e6,
-  'IMX': 1e6,
-  'INJ': 1e6,
-  'HNT': 1e6,
-  'WIF': 1e6,
-  'JUP': 1e6,
-  'BLAST': 1e6,
-  'POL': 1e6,
-  'USDC': 1e8
-};
-
-// Simple price estimates (you might want to fetch real prices from an API)
-const APPROXIMATE_USD_PRICES = {
-  'USDT': 1,
-  'USD': 1,
-  'USDC': 1,
-  'BTC': 43000,
-  'ETH': 2300,
-  'XRP': 0.6,
-  'LINK': 14,
-  'ADA': 0.4,
-  'DOT': 7,
-  'SOL': 60,
-  'MATIC': 0.8,
-  'AVAX': 25,
-  'NEAR': 2,
-  'SUI': 1.8,
-  'TON': 2.2,
-  'TRX': 0.1,
-  'MKR': 1500,
-  'IMX': 1.2,
-  'INJ': 20,
-  'HNT': 3,
-  'WIF': 2,
-  'JUP': 0.8,
-  'BLAST': 0.02,
-  'POL': 0.4
-};
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -119,12 +63,12 @@ serve(async (req) => {
       throw new Error('Phemex API credentials not configured');
     }
 
-    // Use spot wallets endpoint for account balance
-    const path = '/spot/wallets';
-    const queryString = '';
+    // Use futures account endpoint instead of spot wallets
+    const path = '/accounts/accountPositions';
+    const queryString = '?currency=USD';
     const body = '';
     
-    console.log('Phemex Spot Wallets API Call Details:');
+    console.log('Phemex Futures Account API Call Details:');
     console.log('- Path:', path);
     console.log('- Query String:', queryString);
     console.log('- Body:', body);
@@ -175,7 +119,7 @@ serve(async (req) => {
       throw new Error(`Phemex API error ${data.code}: ${data.msg}`);
     }
 
-    // Extract account information from spot wallets response
+    // Extract futures account information
     let account = {
       accountID: 0,
       currency: 'USD',
@@ -184,50 +128,29 @@ serve(async (req) => {
       unrealisedPnl: 0
     };
 
-    if (data.data && Array.isArray(data.data)) {
-      let totalEquityUSD = 0;
-      let usdtBalance = 0;
-      const balanceDetails: any[] = [];
+    if (data.data && data.data.account) {
+      const accountData = data.data.account;
       
-      for (const wallet of data.data) {
-        const currency = wallet.currency;
-        const balanceEv = parseFloat(wallet.balanceEv || '0');
-        
-        if (balanceEv > 0) {
-          // Get the scaling factor for this currency
-          const scale = CURRENCY_SCALES[currency] || 1e8;
-          const actualBalance = balanceEv / scale;
-          
-          // Get approximate USD value
-          const usdPrice = APPROXIMATE_USD_PRICES[currency] || 0;
-          const usdValue = actualBalance * usdPrice;
-          
-          console.log(`${currency}: ${balanceEv} balanceEv -> ${actualBalance} ${currency} -> $${usdValue.toFixed(2)} USD`);
-          
-          totalEquityUSD += usdValue;
-          
-          if (currency === 'USDT') {
-            usdtBalance = actualBalance;
-          }
-          
-          balanceDetails.push({
-            currency,
-            balance: actualBalance,
-            usdValue: usdValue
-          });
-        }
-      }
-
-      console.log('Balance Details:', balanceDetails);
-      console.log('Total Equity USD:', totalEquityUSD);
+      // Futures account uses different scaling (1e8 for USD values)
+      const totalEquityEv = parseFloat(accountData.accountBalanceEv || '0');
+      const availableBalanceEv = parseFloat(accountData.totalAvailableBalanceEv || '0');
+      const unrealisedPnlEv = parseFloat(accountData.totalUnrealisedPnlEv || '0');
+      
+      console.log('Raw Account Data:', {
+        totalEquityEv,
+        availableBalanceEv,
+        unrealisedPnlEv
+      });
 
       account = {
-        accountID: data.data[0]?.userId || 0,
-        currency: 'USD',
-        totalEquity: totalEquityUSD,
-        availableBalance: usdtBalance,
-        unrealisedPnl: 0 // Spot doesn't have unrealized PnL
+        accountID: parseInt(accountData.accountId || '0'),
+        currency: accountData.currency || 'USD',
+        totalEquity: totalEquityEv / 1e8, // Convert from Ev scale
+        availableBalance: availableBalanceEv / 1e8,
+        unrealisedPnl: unrealisedPnlEv / 1e8
       };
+      
+      console.log('Converted Account Data:', account);
     }
 
     console.log('Final Account Object:', JSON.stringify(account, null, 2));

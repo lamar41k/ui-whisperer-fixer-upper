@@ -63,125 +63,69 @@ serve(async (req) => {
       throw new Error('Phemex API credentials not configured');
     }
 
-    console.log('Trying to fetch Phemex orders...');
+    console.log('Fetching Phemex futures orders...');
 
-    // Try multiple endpoints to find which one works with the current API key
-    const endpoints = [
-      { path: '/g-orders/activeList', query: '?currency=USDT', type: 'perpetual' },
-      { path: '/orders/activeList', query: '?currency=USDT', type: 'futures' },
-      { path: '/spot/orders/active', query: '', type: 'spot' }
-    ];
+    // Use correct futures orders endpoint
+    const path = '/exchange/order/list';
+    const queryString = '?currency=USD&ordStatus=New'; // Active orders only
+    
+    console.log(`Making request to: ${path}${queryString}`);
+    
+    const { expiry, signature } = await sign(path, queryString, '');
+    
+    const apiUrl = `https://api.phemex.com${path}${queryString}`;
+    console.log(`Full URL: ${apiUrl}`);
+    
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'x-phemex-access-token': apiKey,
+        'x-phemex-request-signature': signature,
+        'x-phemex-request-expiry': expiry.toString(),
+        'Content-Type': 'application/json',
+      },
+    });
 
-    let orders = [];
-    let lastError = null;
+    const responseText = await response.text();
+    console.log(`Response Status: ${response.status}`);
+    console.log(`Response Body:`, responseText);
 
-    for (const endpoint of endpoints) {
-      try {
-        console.log(`Trying endpoint: ${endpoint.path}${endpoint.query}`);
-        
-        const { expiry, signature } = await sign(endpoint.path, endpoint.query, '');
-        
-        const apiUrl = `https://api.phemex.com${endpoint.path}${endpoint.query}`;
-        console.log(`Making request to: ${apiUrl}`);
-        
-        const response = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'x-phemex-access-token': apiKey,
-            'x-phemex-request-signature': signature,
-            'x-phemex-request-expiry': expiry.toString(),
-            'Content-Type': 'application/json',
-          },
-        });
-
-        const responseText = await response.text();
-        console.log(`Response Status for ${endpoint.path}: ${response.status}`);
-        console.log(`Response Body for ${endpoint.path}:`, responseText);
-
-        if (!response.ok) {
-          console.log(`Failed ${endpoint.path}: HTTP ${response.status}`);
-          lastError = `HTTP ${response.status}: ${responseText}`;
-          continue;
-        }
-
-        let data;
-        try {
-          data = JSON.parse(responseText);
-        } catch (e) {
-          console.log(`Failed to parse JSON for ${endpoint.path}:`, responseText);
-          lastError = 'Invalid JSON response';
-          continue;
-        }
-
-        // Check for Phemex API error code
-        if (data.code !== 0) {
-          console.log(`Phemex API error ${data.code} for ${endpoint.path}:`, data);
-          lastError = `Phemex API error ${data.code}: ${data.msg}`;
-          continue;
-        }
-
-        // Successfully got data from this endpoint
-        console.log(`Success with endpoint ${endpoint.path}:`, JSON.stringify(data, null, 2));
-
-        // Extract orders based on endpoint type and response structure
-        if (data.data) {
-          if (data.data.rows) {
-            // Perpetual/futures format
-            orders = data.data.rows.map((order: any) => ({
-              orderID: order.orderID || order.clOrdID,
-              symbol: order.symbol,
-              side: order.side,
-              ordType: order.ordType || order.orderType,
-              price: parseFloat(order.priceEp ? (order.priceEp / 100000000).toString() : order.price || '0'),
-              orderQty: parseFloat(order.orderQtyEq ? (order.orderQtyEq / 100000000).toString() : order.orderQty || '0'),
-              cumQty: parseFloat(order.cumQtyEq ? (order.cumQtyEq / 100000000).toString() : order.cumQty || '0'),
-              ordStatus: order.ordStatus || order.orderStatus,
-              transactTime: order.transactTimeNs ? Math.floor(parseInt(order.transactTimeNs) / 1000000) : Date.now()
-            }));
-          } else if (Array.isArray(data.data)) {
-            // Spot format
-            orders = data.data.map((order: any) => ({
-              orderID: order.orderID || order.id,
-              symbol: order.symbol,
-              side: order.side,
-              ordType: order.type || order.ordType,
-              price: parseFloat(order.price || '0'),
-              orderQty: parseFloat(order.origQty || order.quantity || '0'),
-              cumQty: parseFloat(order.executedQty || order.cumQty || '0'),
-              ordStatus: order.status || order.ordStatus,
-              transactTime: order.time || order.transactTime || Date.now()
-            }));
-          }
-        }
-
-        // If we got here, we found a working endpoint
-        break;
-
-      } catch (error) {
-        console.log(`Error with endpoint ${endpoint.path}:`, error);
-        lastError = error.message;
-      }
+    if (!response.ok) {
+      console.error(`Failed: HTTP ${response.status}`);
+      throw new Error(`HTTP ${response.status}: ${responseText}`);
     }
 
-    // If no endpoints worked, return helpful error message
-    if (orders.length === 0 && lastError) {
-      console.log('All order endpoints failed, returning fallback response');
-      return new Response(
-        JSON.stringify({ 
-          data: { rows: [] },
-          info: {
-            message: 'No orders found. This may be because your API key only has spot trading permissions, not perpetual/futures permissions.',
-            lastError: lastError,
-            suggestion: 'Check your Phemex API key permissions in your account settings.'
-          }
-        }),
-        { 
-          headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json' 
-          } 
-        }
-      );
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error(`Failed to parse JSON:`, responseText);
+      throw new Error('Invalid JSON response');
+    }
+
+    // Check for Phemex API error code
+    if (data.code !== 0) {
+      console.error(`Phemex API error ${data.code}:`, data);
+      throw new Error(`Phemex API error ${data.code}: ${data.msg}`);
+    }
+
+    console.log(`Success:`, JSON.stringify(data, null, 2));
+
+    let orders = [];
+    
+    // Extract orders from futures response
+    if (data.data && data.data.rows && Array.isArray(data.data.rows)) {
+      orders = data.data.rows.map((order: any) => ({
+        orderID: order.orderID || order.clOrdID,
+        symbol: order.symbol,
+        side: order.side,
+        ordType: order.ordType,
+        price: parseFloat(order.priceEv || '0') / 1e8, // Convert from Ev scale
+        orderQty: parseFloat(order.orderQtyEv || '0') / 1e8,
+        cumQty: parseFloat(order.cumQtyEv || '0') / 1e8,
+        ordStatus: order.ordStatus,
+        transactTime: order.transactTimeNs ? Math.floor(parseInt(order.transactTimeNs) / 1000000) : Date.now()
+      }));
     }
 
     console.log('Final Orders Array:', JSON.stringify(orders, null, 2));
@@ -202,8 +146,8 @@ serve(async (req) => {
       JSON.stringify({ 
         error: error.message,
         info: {
-          message: 'Unable to fetch orders. This may be due to API key permissions.',
-          suggestion: 'Ensure your Phemex API key has the necessary permissions for the endpoints you are trying to access.'
+          message: 'Unable to fetch futures orders. Check API key permissions.',
+          suggestion: 'Ensure your Phemex API key has futures trading permissions enabled.'
         }
       }),
       { 
