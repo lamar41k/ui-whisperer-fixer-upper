@@ -44,9 +44,7 @@ async function sign(path: string, queryString = '', body = '') {
   }
 
   const expiry = getExpiry();
-  // Fixed: Remove the leading ? from queryString when constructing payload
-  const cleanQuery = queryString.startsWith('?') ? queryString.substring(1) : queryString;
-  const payload = path + cleanQuery + expiry + body;
+  const payload = path + queryString + expiry + body;
   const signature = await hmacSHA256(apiSecret, payload);
 
   return { expiry, signature };
@@ -65,17 +63,17 @@ serve(async (req) => {
       throw new Error('Phemex API credentials not configured');
     }
 
-    console.log('Fetching Phemex futures positions...');
+    console.log('Fetching Phemex positions...');
 
-    // Use correct futures positions endpoint
-    const path = '/accounts/positions';
-    const queryString = 'currency=USD'; // Remove the leading ?
+    // Use the simple positions endpoint without currency parameter
+    const path = '/g-accounts/accountPositions';
+    const queryString = '';
     
-    console.log(`Making request to: ${path}?${queryString}`);
+    console.log(`Making request to: ${path}`);
     
     const { expiry, signature } = await sign(path, queryString, '');
     
-    const apiUrl = `https://api.phemex.com${path}?${queryString}`;
+    const apiUrl = `https://api.phemex.com${path}`;
     console.log(`Full URL: ${apiUrl}`);
     console.log(`Signature payload: ${path}${queryString}${expiry}`);
     
@@ -116,26 +114,26 @@ serve(async (req) => {
 
     let positions = [];
     
-    // Extract positions from futures response
+    // Extract positions from response
     if (data.data && data.data.positions && Array.isArray(data.data.positions)) {
       positions = data.data.positions
-        .filter((pos: any) => parseFloat(pos.sizeEv || '0') !== 0) // Only active positions
+        .filter((pos: any) => parseFloat(pos.size || '0') !== 0) // Only active positions
         .map((pos: any) => {
-          const sizeEv = parseFloat(pos.sizeEv || '0');
-          const valueEv = parseFloat(pos.valueEv || '0');
-          const avgEntryPriceEv = parseFloat(pos.avgEntryPriceEv || '0');
-          const markPriceEv = parseFloat(pos.markPriceEv || '0');
-          const unrealisedPnlEv = parseFloat(pos.unrealisedPnlEv || '0');
+          const size = parseFloat(pos.size || '0');
+          const value = parseFloat(pos.value || '0');
+          const avgEntryPrice = parseFloat(pos.avgEntryPrice || '0');
+          const markPrice = parseFloat(pos.markPrice || '0');
+          const unrealisedPnl = parseFloat(pos.unrealisedPnl || '0');
           
           return {
             symbol: pos.symbol,
-            side: sizeEv > 0 ? 'Buy' : 'Sell',
-            size: Math.abs(sizeEv / 1e8), // Convert from Ev scale
-            value: Math.abs(valueEv / 1e8),
-            entryPrice: avgEntryPriceEv / 1e8,
-            markPrice: markPriceEv / 1e8,
-            unrealisedPnl: unrealisedPnlEv / 1e8,
-            unrealisedPnlPcnt: parseFloat(pos.unrealisedPnlPcnt || '0') / 1e6 // Percentage in basis points
+            side: size > 0 ? 'Buy' : 'Sell',
+            size: Math.abs(size),
+            value: Math.abs(value),
+            entryPrice: avgEntryPrice,
+            markPrice: markPrice,
+            unrealisedPnl: unrealisedPnl,
+            unrealisedPnlPcnt: parseFloat(pos.unrealisedPnlPcnt || '0')
           };
         });
     }
@@ -158,8 +156,8 @@ serve(async (req) => {
       JSON.stringify({ 
         error: error.message,
         info: {
-          message: 'Unable to fetch futures positions. Check API key permissions.',
-          suggestion: 'Ensure your Phemex API key has futures trading permissions enabled.'
+          message: 'Unable to fetch positions. Check API key permissions.',
+          suggestion: 'Ensure your Phemex API key has the required permissions enabled.'
         }
       }),
       { 

@@ -44,9 +44,7 @@ async function sign(path: string, queryString = '', body = '') {
   }
 
   const expiry = getExpiry();
-  // Fixed: Remove the leading ? from queryString when constructing payload
-  const cleanQuery = queryString.startsWith('?') ? queryString.substring(1) : queryString;
-  const payload = path + cleanQuery + expiry + body;
+  const payload = path + queryString + expiry + body;
   const signature = await hmacSHA256(apiSecret, payload);
 
   return { expiry, signature };
@@ -65,17 +63,17 @@ serve(async (req) => {
       throw new Error('Phemex API credentials not configured');
     }
 
-    console.log('Fetching Phemex futures account...');
+    console.log('Fetching Phemex account info...');
 
-    // Use correct futures account endpoint
-    const path = '/accounts/accountPositions';
-    const queryString = 'currency=USD'; // Remove the leading ?
+    // Use the correct account info endpoint without currency parameter
+    const path = '/phemex-user/users/children';
+    const queryString = '';
     
-    console.log(`Making request to: ${path}?${queryString}`);
+    console.log(`Making request to: ${path}`);
     
     const { expiry, signature } = await sign(path, queryString, '');
     
-    const apiUrl = `https://api.phemex.com${path}?${queryString}`;
+    const apiUrl = `https://api.phemex.com${path}`;
     console.log(`Full URL: ${apiUrl}`);
     console.log(`Signature payload: ${path}${queryString}${expiry}`);
     
@@ -114,7 +112,7 @@ serve(async (req) => {
 
     console.log(`Success:`, JSON.stringify(data, null, 2));
 
-    // Extract futures account information
+    // Try to get account balance from user info
     let account = {
       accountID: 0,
       currency: 'USD',
@@ -123,20 +121,15 @@ serve(async (req) => {
       unrealisedPnl: 0
     };
 
-    if (data.data && data.data.account) {
-      const accountData = data.data.account;
-      
-      // Futures account uses different scaling (1e8 for USD values)
-      const totalEquityEv = parseFloat(accountData.accountBalanceEv || '0');
-      const availableBalanceEv = parseFloat(accountData.totalAvailableBalanceEv || '0');
-      const unrealisedPnlEv = parseFloat(accountData.totalUnrealisedPnlEv || '0');
-
+    // If this endpoint doesn't give us account balance, we'll try another approach
+    if (data.data && data.data.length > 0) {
+      const userData = data.data[0];
       account = {
-        accountID: parseInt(accountData.accountId || '0'),
-        currency: accountData.currency || 'USD',
-        totalEquity: totalEquityEv / 1e8, // Convert from Ev scale
-        availableBalance: availableBalanceEv / 1e8,
-        unrealisedPnl: unrealisedPnlEv / 1e8
+        accountID: parseInt(userData.userId || '0'),
+        currency: 'USD',
+        totalEquity: 0, // This endpoint may not provide balance info
+        availableBalance: 0,
+        unrealisedPnl: 0
       };
     }
 

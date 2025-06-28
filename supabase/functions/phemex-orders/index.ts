@@ -44,9 +44,7 @@ async function sign(path: string, queryString = '', body = '') {
   }
 
   const expiry = getExpiry();
-  // Fixed: Remove the leading ? from queryString when constructing payload
-  const cleanQuery = queryString.startsWith('?') ? queryString.substring(1) : queryString;
-  const payload = path + cleanQuery + expiry + body;
+  const payload = path + queryString + expiry + body;
   const signature = await hmacSHA256(apiSecret, payload);
 
   return { expiry, signature };
@@ -65,11 +63,11 @@ serve(async (req) => {
       throw new Error('Phemex API credentials not configured');
     }
 
-    console.log('Fetching Phemex futures orders...');
+    console.log('Fetching Phemex orders...');
 
-    // Use correct futures orders endpoint
-    const path = '/exchange/order/list';
-    const queryString = 'currency=USD&ordStatus=New'; // Remove the leading ?
+    // Use the orders endpoint without currency parameter
+    const path = '/orders/activeList';
+    const queryString = 'symbol=BTCUSD'; // Use a specific symbol instead of currency
     
     console.log(`Making request to: ${path}?${queryString}`);
     
@@ -116,16 +114,16 @@ serve(async (req) => {
 
     let orders = [];
     
-    // Extract orders from futures response
+    // Extract orders from response
     if (data.data && data.data.rows && Array.isArray(data.data.rows)) {
       orders = data.data.rows.map((order: any) => ({
         orderID: order.orderID || order.clOrdID,
         symbol: order.symbol,
         side: order.side,
         ordType: order.ordType,
-        price: parseFloat(order.priceEv || '0') / 1e8, // Convert from Ev scale
-        orderQty: parseFloat(order.orderQtyEv || '0') / 1e8,
-        cumQty: parseFloat(order.cumQtyEv || '0') / 1e8,
+        price: parseFloat(order.priceEp || order.price || '0'),
+        orderQty: parseFloat(order.orderQty || '0'),
+        cumQty: parseFloat(order.cumQty || '0'),
         ordStatus: order.ordStatus,
         transactTime: order.transactTimeNs ? Math.floor(parseInt(order.transactTimeNs) / 1000000) : Date.now()
       }));
@@ -149,8 +147,8 @@ serve(async (req) => {
       JSON.stringify({ 
         error: error.message,
         info: {
-          message: 'Unable to fetch futures orders. Check API key permissions.',
-          suggestion: 'Ensure your Phemex API key has futures trading permissions enabled.'
+          message: 'Unable to fetch orders. Check API key permissions.',
+          suggestion: 'Ensure your Phemex API key has the required permissions enabled.'
         }
       }),
       { 
