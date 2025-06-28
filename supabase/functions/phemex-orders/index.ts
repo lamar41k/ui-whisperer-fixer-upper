@@ -104,7 +104,21 @@ serve(async (req) => {
       throw new Error('Invalid JSON response');
     }
 
-    // Check for Phemex API error code
+    // Handle the case where no orders are found (code 10002)
+    if (data.code === 10002) {
+      console.log('No orders found, returning empty array');
+      return new Response(
+        JSON.stringify({ data: { rows: [] } }),
+        { 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
+    }
+
+    // Check for other Phemex API error codes
     if (data.code !== 0) {
       console.error(`Phemex API error ${data.code}:`, data);
       throw new Error(`Phemex API error ${data.code}: ${data.msg}`);
