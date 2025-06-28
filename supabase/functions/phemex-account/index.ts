@@ -65,7 +65,7 @@ serve(async (req) => {
 
     console.log('Fetching Phemex account balance...');
 
-    // Try the general accounts endpoint first
+    // Try the spot account endpoint first
     const path = '/accounts/accountPositions';
     const queryString = '?currency=USD';
     
@@ -91,55 +91,19 @@ serve(async (req) => {
     console.log(`Response Status: ${response.status}`);
     console.log(`Response Body:`, responseText);
 
-    // If the first endpoint fails, try the user info endpoint to at least get some data
     if (!response.ok) {
-      console.log('First endpoint failed, trying user info endpoint...');
+      console.log('First endpoint failed, returning basic account info...');
       
-      const userPath = '/phemex-user/users/children';
-      
-      const { expiry: expiry2, signature: signature2 } = await sign(userPath, '', '');
-      
-      const userApiUrl = `https://api.phemex.com${userPath}`;
-      console.log(`Trying user endpoint: ${userApiUrl}`);
-      
-      const userResponse = await fetch(userApiUrl, {
-        method: 'GET',
-        headers: {
-          'x-phemex-access-token': apiKey,
-          'x-phemex-request-signature': signature2,
-          'x-phemex-request-expiry': expiry2.toString(),
-          'Content-Type': 'application/json',
-        },
-      });
-
-      const userResponseText = await userResponse.text();
-      console.log(`User endpoint Response Status: ${userResponse.status}`);
-      console.log(`User endpoint Response Body:`, userResponseText);
-
-      if (!userResponse.ok) {
-        console.error(`Both endpoints failed`);
-        throw new Error(`API Error: ${userResponse.status} - ${userResponseText}`);
-      }
-
-      // Process user response
-      let userData;
-      try {
-        userData = JSON.parse(userResponseText);
-      } catch (e) {
-        console.error(`Failed to parse user JSON:`, userResponseText);
-        throw new Error('Invalid JSON response from user endpoint');
-      }
-
-      // Return basic account info with zero balance if we can't get account data
+      // Return basic account info with zero balance
       const account = {
-        accountID: userData.data?.userId || 0,
+        accountID: 0,
         currency: 'USDT',
         totalEquity: 0,
         availableBalance: 0,
         unrealisedPnl: 0
       };
 
-      console.log('Using user data with zero balance:', JSON.stringify(account, null, 2));
+      console.log('Returning zero balance account:', JSON.stringify(account, null, 2));
       
       return new Response(
         JSON.stringify({ data: { account } }),
