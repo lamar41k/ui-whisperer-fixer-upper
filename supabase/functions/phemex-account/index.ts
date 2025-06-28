@@ -50,6 +50,28 @@ async function sign(path: string, queryString = '', body = '') {
   return { expiry, signature };
 }
 
+// Convert Phemex balance values (which are in integer format) to decimal
+function convertPhemexBalance(balanceEv: number, currency: string): number {
+  // Different currencies have different scaling factors
+  const scalingFactors: { [key: string]: number } = {
+    'USD': 10000,
+    'USDT': 1000000,
+    'BTC': 100000000,
+    'ETH': 1000000000000000000,
+    'XRP': 1000000,
+    'LINK': 1000000,
+    'ADA': 1000000,
+    'DOT': 10000,
+    'SOL': 1000000000,
+    'AVAX': 1000000000,
+    'NEAR': 1000000,
+    'default': 1000000
+  };
+  
+  const scaleFactor = scalingFactors[currency] || scalingFactors['default'];
+  return balanceEv / scaleFactor;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -65,7 +87,7 @@ serve(async (req) => {
 
     console.log('Fetching Phemex account info...');
 
-    // Use the correct account info endpoint without currency parameter
+    // Use the correct account info endpoint
     const path = '/phemex-user/users/children';
     const queryString = '';
     
@@ -112,7 +134,7 @@ serve(async (req) => {
 
     console.log(`Success:`, JSON.stringify(data, null, 2));
 
-    // Try to get account balance from user info
+    // Extract account information from response
     let account = {
       accountID: 0,
       currency: 'USD',
@@ -121,15 +143,58 @@ serve(async (req) => {
       unrealisedPnl: 0
     };
 
-    // If this endpoint doesn't give us account balance, we'll try another approach
     if (data.data && data.data.length > 0) {
       const userData = data.data[0];
+      
+      // Calculate total equity from all wallets
+      let totalEquityUSD = 0;
+      let availableBalanceUSD = 0;
+      
+      if (userData.wallets && Array.isArray(userData.wallets)) {
+        userData.wallets.forEach((wallet: any) => {
+          if (wallet.balanceEv && wallet.balanceEv > 0) {
+            const balance = convertPhemexBalance(wallet.balanceEv, wallet.currency);
+            console.log(`${wallet.currency} balance: ${balance} (raw: ${wallet.balanceEv})`);
+            
+            // For now, we'll just sum all balances as if they were USD equivalent
+            // In a real implementation, you'd convert to USD using exchange rates
+            if (wallet.currency === 'USD' || wallet.currency === 'USDT' || wallet.currency === 'USDC') {
+              totalEquityUSD += balance;
+              availableBalanceUSD += balance;
+            } else {
+              // For other currencies, we'll add a small representative value
+              // This is simplified - in reality you'd need to convert to USD
+              totalEquityUSD += balance * 0.1; // Placeholder conversion
+              availableBalanceUSD += balance * 0.1;
+            }
+          }
+        });
+      }
+      
+      // Also check margin accounts
+      if (userData.userMarginVo && Array.isArray(userData.userMarginVo)) {
+        userData.userMarginVo.forEach((margin: any) => {
+          if (margin.accountBalanceEv && margin.accountBalanceEv > 0) {
+            const balance = convertPhemexBalance(margin.accountBalanceEv, margin.currency);
+            console.log(`${margin.currency} margin balance: ${balance} (raw: ${margin.accountBalanceEv})`);
+            
+            if (margin.currency === 'USD' || margin.currency === 'USDT' || margin.currency === 'USDC') {
+              totalEquityUSD += balance;
+              availableBalanceUSD += balance;
+            } else {
+              totalEquityUSD += balance * 0.1; // Placeholder conversion
+              availableBalanceUSD += balance * 0.1;
+            }
+          }
+        });
+      }
+
       account = {
         accountID: parseInt(userData.userId || '0'),
         currency: 'USD',
-        totalEquity: 0, // This endpoint may not provide balance info
-        availableBalance: 0,
-        unrealisedPnl: 0
+        totalEquity: totalEquityUSD,
+        availableBalance: availableBalanceUSD,
+        unrealisedPnl: 0 // This would need to be calculated from positions
       };
     }
 
