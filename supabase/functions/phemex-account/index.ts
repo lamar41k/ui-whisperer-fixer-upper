@@ -50,28 +50,6 @@ async function sign(path: string, queryString = '', body = '') {
   return { expiry, signature };
 }
 
-// Convert Phemex balance values (which are in integer format) to decimal
-function convertPhemexBalance(balanceEv: number, currency: string): number {
-  // Different currencies have different scaling factors
-  const scalingFactors: { [key: string]: number } = {
-    'USD': 10000,
-    'USDT': 1000000,
-    'BTC': 100000000,
-    'ETH': 1000000000000000000,
-    'XRP': 1000000,
-    'LINK': 1000000,
-    'ADA': 1000000,
-    'DOT': 10000,
-    'SOL': 1000000000,
-    'AVAX': 1000000000,
-    'NEAR': 1000000,
-    'default': 1000000
-  };
-  
-  const scaleFactor = scalingFactors[currency] || scalingFactors['default'];
-  return balanceEv / scaleFactor;
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -85,17 +63,17 @@ serve(async (req) => {
       throw new Error('Phemex API credentials not configured');
     }
 
-    console.log('Fetching Phemex account info...');
+    console.log('Fetching Phemex futures account balance...');
 
-    // Use the correct account info endpoint
-    const path = '/phemex-user/users/children';
-    const queryString = '';
+    // Use the correct futures account endpoint
+    const path = '/api/v1/accounts';
+    const queryString = '?currency=USDT&accountType=SWAP';
     
-    console.log(`Making request to: ${path}`);
+    console.log(`Making request to: ${path}${queryString}`);
     
     const { expiry, signature } = await sign(path, queryString, '');
     
-    const apiUrl = `https://api.phemex.com${path}`;
+    const apiUrl = `https://api.phemex.com${path}${queryString}`;
     console.log(`Full URL: ${apiUrl}`);
     console.log(`Signature payload: ${path}${queryString}${expiry}`);
     
@@ -134,68 +112,45 @@ serve(async (req) => {
 
     console.log(`Success:`, JSON.stringify(data, null, 2));
 
-    // Extract account information from response
+    // Extract futures account information from response
     let account = {
       accountID: 0,
-      currency: 'USD',
+      currency: 'USDT',
       totalEquity: 0,
       availableBalance: 0,
       unrealisedPnl: 0
     };
 
     if (data.data && data.data.length > 0) {
-      const userData = data.data[0];
+      // Find the SWAP account in the response
+      const swapAccount = data.data.find((acc: any) => acc.accountType === 'SWAP');
       
-      // Calculate total equity from all wallets
-      let totalEquityUSD = 0;
-      let availableBalanceUSD = 0;
-      
-      if (userData.wallets && Array.isArray(userData.wallets)) {
-        userData.wallets.forEach((wallet: any) => {
-          if (wallet.balanceEv && wallet.balanceEv > 0) {
-            const balance = convertPhemexBalance(wallet.balanceEv, wallet.currency);
-            console.log(`${wallet.currency} balance: ${balance} (raw: ${wallet.balanceEv})`);
-            
-            // For now, we'll just sum all balances as if they were USD equivalent
-            // In a real implementation, you'd convert to USD using exchange rates
-            if (wallet.currency === 'USD' || wallet.currency === 'USDT' || wallet.currency === 'USDC') {
-              totalEquityUSD += balance;
-              availableBalanceUSD += balance;
-            } else {
-              // For other currencies, we'll add a small representative value
-              // This is simplified - in reality you'd need to convert to USD
-              totalEquityUSD += balance * 0.1; // Placeholder conversion
-              availableBalanceUSD += balance * 0.1;
-            }
-          }
+      if (swapAccount) {
+        console.log('Found SWAP account:', JSON.stringify(swapAccount, null, 2));
+        
+        // Convert from Phemex's integer format to decimal (USDT uses 1000000 scale factor)
+        const totalEquity = (swapAccount.totalBalance || 0) / 1000000;
+        const availableBalance = (swapAccount.availableBalance || 0) / 1000000;
+        const unrealisedPnl = (swapAccount.unrealisedPnl || 0) / 1000000;
+        
+        account = {
+          accountID: swapAccount.accountId || 0,
+          currency: swapAccount.currency || 'USDT',
+          totalEquity: totalEquity,
+          availableBalance: availableBalance,
+          unrealisedPnl: unrealisedPnl
+        };
+        
+        console.log('Converted account balance:', {
+          totalEquity: `${totalEquity} USDT (raw: ${swapAccount.totalBalance})`,
+          availableBalance: `${availableBalance} USDT (raw: ${swapAccount.availableBalance})`,
+          unrealisedPnl: `${unrealisedPnl} USDT (raw: ${swapAccount.unrealisedPnl})`
         });
+      } else {
+        console.log('No SWAP account found in response. Available accounts:', 
+          data.data.map((acc: any) => ({ accountType: acc.accountType, currency: acc.currency }))
+        );
       }
-      
-      // Also check margin accounts
-      if (userData.userMarginVo && Array.isArray(userData.userMarginVo)) {
-        userData.userMarginVo.forEach((margin: any) => {
-          if (margin.accountBalanceEv && margin.accountBalanceEv > 0) {
-            const balance = convertPhemexBalance(margin.accountBalanceEv, margin.currency);
-            console.log(`${margin.currency} margin balance: ${balance} (raw: ${margin.accountBalanceEv})`);
-            
-            if (margin.currency === 'USD' || margin.currency === 'USDT' || margin.currency === 'USDC') {
-              totalEquityUSD += balance;
-              availableBalanceUSD += balance;
-            } else {
-              totalEquityUSD += balance * 0.1; // Placeholder conversion
-              availableBalanceUSD += balance * 0.1;
-            }
-          }
-        });
-      }
-
-      account = {
-        accountID: parseInt(userData.userId || '0'),
-        currency: 'USD',
-        totalEquity: totalEquityUSD,
-        availableBalance: availableBalanceUSD,
-        unrealisedPnl: 0 // This would need to be calculated from positions
-      };
     }
 
     console.log('Final Account Object:', JSON.stringify(account, null, 2));
