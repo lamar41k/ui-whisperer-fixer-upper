@@ -67,9 +67,9 @@ serve(async (req) => {
 
     console.log('Fetching Phemex account balance...');
 
-    // Try the spot account endpoint first
+    // Try the wallet endpoint first - this should work for getting account balance
     const path = '/accounts/accountPositions';
-    const queryString = '?currency=USD';
+    const queryString = ''; // Remove the problematic currency parameter
     
     console.log(`Making request to: ${path}${queryString}`);
     
@@ -77,7 +77,7 @@ serve(async (req) => {
     
     const apiUrl = `https://api.phemex.com${path}${queryString}`;
     console.log(`Full URL: ${apiUrl}`);
-    console.log(`Signature payload: ${path}${queryString.substring(1)}${expiry}`);
+    console.log(`Signature payload: ${path}${queryString}${expiry}`);
     
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -94,10 +94,74 @@ serve(async (req) => {
     console.log(`Response Body:`, responseText);
 
     if (!response.ok) {
-      console.log('First endpoint failed, returning basic account info...');
+      // If this endpoint fails, try the spot wallet endpoint
+      console.log('First endpoint failed, trying spot wallet endpoint...');
       
-      // Return basic account info with zero balance
-      const account = {
+      const spotPath = '/spot/wallets';
+      const spotQueryString = '';
+      
+      const { expiry: spotExpiry, signature: spotSignature } = await sign(spotPath, spotQueryString, '');
+      
+      const spotApiUrl = `https://api.phemex.com${spotPath}`;
+      console.log(`Trying spot wallet URL: ${spotApiUrl}`);
+      
+      const spotResponse = await fetch(spotApiUrl, {
+        method: 'GET',
+        headers: {
+          'x-phemex-access-token': apiKey,
+          'x-phemex-request-signature': spotSignature,
+          'x-phemex-request-expiry': spotExpiry.toString(),
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const spotResponseText = await spotResponse.text();
+      console.log(`Spot Response Status: ${spotResponse.status}`);
+      console.log(`Spot Response Body:`, spotResponseText);
+
+      if (!spotResponse.ok) {
+        console.log('Both endpoints failed, returning basic account info...');
+        
+        // Return basic account info with zero balance
+        const account = {
+          accountID: 0,
+          currency: 'USDT',
+          totalEquity: 0,
+          availableBalance: 0,
+          unrealisedPnl: 0
+        };
+
+        console.log('Returning zero balance account:', JSON.stringify(account, null, 2));
+        
+        return new Response(
+          JSON.stringify({ data: { account } }),
+          { 
+            headers: { 
+              ...corsHeaders, 
+              'Content-Type': 'application/json' 
+            } 
+          }
+        );
+      }
+
+      // Process spot wallet response
+      let spotData;
+      try {
+        spotData = JSON.parse(spotResponseText);
+      } catch (e) {
+        console.error(`Failed to parse spot JSON:`, spotResponseText);
+        throw new Error('Invalid JSON response from spot wallet');
+      }
+
+      if (spotData.code !== 0) {
+        console.error(`Phemex spot API error ${spotData.code}:`, spotData);
+        throw new Error(`Phemex spot API error ${spotData.code}: ${spotData.msg}`);
+      }
+
+      console.log(`Spot Success:`, JSON.stringify(spotData, null, 2));
+
+      // Extract account information from spot wallet response
+      let account = {
         accountID: 0,
         currency: 'USDT',
         totalEquity: 0,
@@ -105,7 +169,27 @@ serve(async (req) => {
         unrealisedPnl: 0
       };
 
-      console.log('Returning zero balance account:', JSON.stringify(account, null, 2));
+      if (spotData.data && Array.isArray(spotData.data)) {
+        const usdtWallet = spotData.data.find((wallet: any) => wallet.currency === 'USDT');
+        
+        if (usdtWallet) {
+          console.log('Found USDT wallet:', JSON.stringify(usdtWallet, null, 2));
+          
+          // Spot wallet balances are usually in different format
+          const balance = parseFloat(usdtWallet.balance || '0');
+          const locked = parseFloat(usdtWallet.locked || '0');
+          
+          account = {
+            accountID: 0,
+            currency: 'USDT',
+            totalEquity: balance + locked,
+            availableBalance: balance,
+            unrealisedPnl: 0
+          };
+        }
+      }
+
+      console.log('Final Spot Account Object:', JSON.stringify(account, null, 2));
       
       return new Response(
         JSON.stringify({ data: { account } }),
