@@ -44,7 +44,9 @@ async function sign(path: string, queryString = '', body = '') {
   }
 
   const expiry = getExpiry();
-  const payload = path + queryString + expiry + body;
+  // For signature: path + queryString (without ?) + expiry + body
+  const signatureQuery = queryString.startsWith('?') ? queryString.substring(1) : queryString;
+  const payload = path + signatureQuery + expiry + body;
   const signature = await hmacSHA256(apiSecret, payload);
 
   return { expiry, signature };
@@ -75,7 +77,7 @@ serve(async (req) => {
     
     const apiUrl = `https://api.phemex.com${path}${queryString}`;
     console.log(`Full URL: ${apiUrl}`);
-    console.log(`Signature payload: ${path}${queryString}${expiry}`);
+    console.log(`Signature payload: ${path}${queryString.substring(1)}${expiry}`);
     
     const response = await fetch(apiUrl, {
       method: 'GET',
