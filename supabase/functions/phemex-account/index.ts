@@ -202,26 +202,34 @@ serve(async (req) => {
         let totalEquityUSD = 0;
         let availableBalanceUSD = 0;
         
+        console.log('Processing wallets...');
+        
         spotData.data.forEach((wallet: any) => {
-          if (wallet.balanceEv && parseInt(wallet.balanceEv) > 0) {
-            console.log(`Found ${wallet.currency} wallet with balance:`, wallet.balanceEv);
+          const balanceEvInt = parseInt(wallet.balanceEv || '0');
+          const lockedEvInt = parseInt(wallet.lockedTradingBalanceEv || '0');
+          
+          if (balanceEvInt > 0 || lockedEvInt > 0) {
+            console.log(`Processing ${wallet.currency} wallet: balanceEv=${wallet.balanceEv}, lockedEv=${wallet.lockedTradingBalanceEv}`);
             
             // Convert from Phemex's scaled format (8 decimal places)
             const scaleFactor = 100000000;
-            const balance = parseInt(wallet.balanceEv) / scaleFactor;
-            const locked = parseInt(wallet.lockedTradingBalanceEv || '0') / scaleFactor;
+            const balance = balanceEvInt / scaleFactor;
+            const locked = lockedEvInt / scaleFactor;
+            const totalBalance = balance + locked;
             
             // Get USD price estimate for this currency
             const usdPrice = cryptoPriceEstimates[wallet.currency] || 0;
-            const balanceUSD = (balance + locked) * usdPrice;
+            const balanceUSD = totalBalance * usdPrice;
             const availableUSD = balance * usdPrice;
             
-            console.log(`${wallet.currency}: ${balance + locked} tokens = $${balanceUSD.toFixed(2)} USD (price: $${usdPrice})`);
+            console.log(`${wallet.currency}: ${totalBalance.toFixed(8)} tokens * $${usdPrice} = $${balanceUSD.toFixed(2)} USD`);
             
             totalEquityUSD += balanceUSD;
             availableBalanceUSD += availableUSD;
           }
         });
+        
+        console.log(`Total calculated USD value: $${totalEquityUSD.toFixed(2)}`);
         
         account = {
           accountID: 0,
