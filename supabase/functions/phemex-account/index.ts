@@ -170,23 +170,37 @@ serve(async (req) => {
       };
 
       if (spotData.data && Array.isArray(spotData.data)) {
-        const usdtWallet = spotData.data.find((wallet: any) => wallet.currency === 'USDT');
+        // Calculate total portfolio value from all currencies
+        let totalEquityUSD = 0;
+        let availableBalanceUSD = 0;
         
-        if (usdtWallet) {
-          console.log('Found USDT wallet:', JSON.stringify(usdtWallet, null, 2));
-          
-          // Spot wallet balances are usually in different format
-          const balance = parseFloat(usdtWallet.balance || '0');
-          const locked = parseFloat(usdtWallet.locked || '0');
-          
-          account = {
-            accountID: 0,
-            currency: 'USDT',
-            totalEquity: balance + locked,
-            availableBalance: balance,
-            unrealisedPnl: 0
-          };
-        }
+        spotData.data.forEach((wallet: any) => {
+          if (wallet.balanceEv && parseInt(wallet.balanceEv) > 0) {
+            console.log(`Found ${wallet.currency} wallet with balance:`, wallet.balanceEv);
+            
+            // Convert from Phemex's scaled format
+            // Most currencies use 8 decimal places (scale factor 100000000)
+            // USDT uses 8 decimal places as well
+            const scaleFactor = wallet.currency === 'USDT' || wallet.currency === 'USDC' ? 100000000 : 100000000;
+            const balance = parseInt(wallet.balanceEv) / scaleFactor;
+            const locked = parseInt(wallet.lockedTradingBalanceEv || '0') / scaleFactor;
+            
+            // For simplicity, assume 1:1 USD conversion for now
+            // In a real implementation, you'd want to fetch current exchange rates
+            if (wallet.currency === 'USDT' || wallet.currency === 'USDC' || wallet.currency === 'USD') {
+              totalEquityUSD += balance + locked;
+              availableBalanceUSD += balance;
+            }
+          }
+        });
+        
+        account = {
+          accountID: 0,
+          currency: 'USDT',
+          totalEquity: totalEquityUSD,
+          availableBalance: availableBalanceUSD,
+          unrealisedPnl: 0
+        };
       }
 
       console.log('Final Spot Account Object:', JSON.stringify(account, null, 2));
