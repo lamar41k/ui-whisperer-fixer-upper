@@ -26,36 +26,27 @@ serve(async (req) => {
 
     const client = new PhemexApiClient(apiKey);
     
-    // Try the account positions endpoint first
-    const response = await client.getAccountPositions();
-    const responseText = await response.text();
+    // Try USDT futures account first - this is the main futures account
+    console.log('Trying USDT futures account...');
+    const usdtResponse = await client.getUsdtFuturesAccount();
+    const usdtResponseText = await usdtResponse.text();
     
-    console.log(`Response Status: ${response.status}`);
-    console.log(`Response Body:`, responseText);
+    console.log(`USDT Futures Response Status: ${usdtResponse.status}`);
+    console.log(`USDT Futures Response Body:`, usdtResponseText);
 
-    if (!response.ok) {
-      // If this endpoint fails, try the spot wallet endpoint
-      console.log('First endpoint failed, trying spot wallet endpoint...');
-      
-      const spotResponse = await client.getSpotWallets();
-      const spotResponseText = await spotResponse.text();
-      
-      console.log(`Spot Response Status: ${spotResponse.status}`);
-      console.log(`Spot Response Body:`, spotResponseText);
+    if (usdtResponse.ok) {
+      let usdtData;
+      try {
+        usdtData = JSON.parse(usdtResponseText);
+      } catch (e) {
+        console.error(`Failed to parse USDT futures JSON:`, usdtResponseText);
+      }
 
-      if (!spotResponse.ok) {
-        console.log('Both endpoints failed, returning basic account info...');
+      if (usdtData && usdtData.code === 0) {
+        console.log(`USDT Futures Success:`, JSON.stringify(usdtData, null, 2));
         
-        // Return basic account info with zero balance
-        const account: PhemexAccount = {
-          accountID: 0,
-          currency: 'USDT',
-          totalEquity: 0,
-          availableBalance: 0,
-          unrealisedPnl: 0
-        };
-
-        console.log('Returning zero balance account:', JSON.stringify(account, null, 2));
+        const account = processUsdtFuturesAccount(usdtData);
+        console.log('Final USDT Futures Account Object:', JSON.stringify(account, null, 2));
         
         return new Response(
           JSON.stringify({ data: { account } }),
@@ -67,26 +58,64 @@ serve(async (req) => {
           }
         );
       }
+    }
 
-      // Process spot wallet response
-      let spotData: PhemexSpotResponse;
+    // Try coin-margined futures if USDT futures fails
+    console.log('USDT futures failed, trying coin-margined futures...');
+    const coinResponse = await client.getCoinFuturesAccount();
+    const coinResponseText = await coinResponse.text();
+    
+    console.log(`Coin Futures Response Status: ${coinResponse.status}`);
+    console.log(`Coin Futures Response Body:`, coinResponseText);
+
+    if (coinResponse.ok) {
+      let coinData;
       try {
-        spotData = JSON.parse(spotResponseText);
+        coinData = JSON.parse(coinResponseText);
       } catch (e) {
-        console.error(`Failed to parse spot JSON:`, spotResponseText);
-        throw new Error('Invalid JSON response from spot wallet');
+        console.error(`Failed to parse coin futures JSON:`, coinResponseText);
       }
 
-      if (spotData.code !== 0) {
-        console.error(`Phemex spot API error ${spotData.code}:`, spotData);
-        throw new Error(`Phemex spot API error ${spotData.code}: ${spotData.msg}`);
+      if (coinData && coinData.code === 0) {
+        console.log(`Coin Futures Success:`, JSON.stringify(coinData, null, 2));
+        
+        const account = processAccountPositions(coinData);
+        console.log('Final Coin Futures Account Object:', JSON.stringify(account, null, 2));
+        
+        return new Response(
+          JSON.stringify({ data: { account } }),
+          { 
+            headers: { 
+              ...corsHeaders, 
+              'Content-Type': 'application/json' 
+            } 
+          }
+        );
       }
+    }
 
-      console.log(`Spot Success:`, JSON.stringify(spotData, null, 2));
+    // Fall back to spot wallets if futures accounts fail
+    console.log('Both futures endpoints failed, trying spot wallet endpoint...');
+    
+    const spotResponse = await client.getSpotWallets();
+    const spotResponseText = await spotResponse.text();
+    
+    console.log(`Spot Response Status: ${spotResponse.status}`);
+    console.log(`Spot Response Body:`, spotResponseText);
 
-      // Process spot wallets and calculate total value
-      const account = processSpotWallets(spotData.data);
-      console.log('Final Spot Account Object:', JSON.stringify(account, null, 2));
+    if (!spotResponse.ok) {
+      console.log('All endpoints failed, returning basic account info...');
+      
+      // Return basic account info with zero balance
+      const account: PhemexAccount = {
+        accountID: 0,
+        currency: 'USDT',
+        totalEquity: 0,
+        availableBalance: 0,
+        unrealisedPnl: 0
+      };
+
+      console.log('Returning zero balance account:', JSON.stringify(account, null, 2));
       
       return new Response(
         JSON.stringify({ data: { account } }),
@@ -99,25 +128,25 @@ serve(async (req) => {
       );
     }
 
-    let data;
+    // Process spot wallet response
+    let spotData: PhemexSpotResponse;
     try {
-      data = JSON.parse(responseText);
+      spotData = JSON.parse(spotResponseText);
     } catch (e) {
-      console.error(`Failed to parse JSON:`, responseText);
-      throw new Error('Invalid JSON response');
+      console.error(`Failed to parse spot JSON:`, spotResponseText);
+      throw new Error('Invalid JSON response from spot wallet');
     }
 
-    // Check for Phemex API error code
-    if (data.code !== 0) {
-      console.error(`Phemex API error ${data.code}:`, data);
-      throw new Error(`Phemex API error ${data.code}: ${data.msg}`);
+    if (spotData.code !== 0) {
+      console.error(`Phemex spot API error ${spotData.code}:`, spotData);
+      throw new Error(`Phemex spot API error ${spotData.code}: ${spotData.msg}`);
     }
 
-    console.log(`Success:`, JSON.stringify(data, null, 2));
+    console.log(`Spot Success:`, JSON.stringify(spotData, null, 2));
 
-    // Extract account information from response
-    const account = processAccountPositions(data);
-    console.log('Final Account Object:', JSON.stringify(account, null, 2));
+    // Process spot wallets and calculate total value
+    const account = processSpotWallets(spotData.data);
+    console.log('Final Spot Account Object:', JSON.stringify(account, null, 2));
     
     return new Response(
       JSON.stringify({ data: { account } }),
@@ -143,3 +172,50 @@ serve(async (req) => {
     );
   }
 });
+
+// Process USDT futures account data
+function processUsdtFuturesAccount(data: any): PhemexAccount {
+  let account: PhemexAccount = {
+    accountID: 0,
+    currency: 'USDT',
+    totalEquity: 0,
+    availableBalance: 0,
+    unrealisedPnl: 0
+  };
+
+  // Look for account data in the response
+  if (data.data && data.data.account) {
+    const acc = data.data.account;
+    console.log('Found USDT futures account:', JSON.stringify(acc, null, 2));
+    
+    // USDT futures use 8 decimal places scaling (100000000)
+    const scaleFactor = 100000000;
+    
+    account = {
+      accountID: acc.accountId || acc.userID || 0,
+      currency: 'USDT',
+      totalEquity: (parseInt(acc.accountBalanceEv || '0') + parseInt(acc.totalUnrealisedPnlEv || '0')) / scaleFactor,
+      availableBalance: parseInt(acc.accountBalanceEv || '0') / scaleFactor,
+      unrealisedPnl: parseInt(acc.totalUnrealisedPnlEv || '0') / scaleFactor
+    };
+  } else if (data.data && Array.isArray(data.data.accounts)) {
+    // Handle multiple accounts format
+    const usdtAccount = data.data.accounts.find((acc: any) => acc.currency === 'USDT');
+    
+    if (usdtAccount) {
+      console.log('Found USDT account in accounts array:', JSON.stringify(usdtAccount, null, 2));
+      
+      const scaleFactor = 100000000; // USDT uses 8 decimal places
+      
+      account = {
+        accountID: usdtAccount.accountId || usdtAccount.userID || 0,
+        currency: 'USDT',
+        totalEquity: (parseInt(usdtAccount.accountBalanceEv || '0') + parseInt(usdtAccount.totalUnrealisedPnlEv || '0')) / scaleFactor,
+        availableBalance: parseInt(usdtAccount.accountBalanceEv || '0') / scaleFactor,
+        unrealisedPnl: parseInt(usdtAccount.totalUnrealisedPnlEv || '0') / scaleFactor
+      };
+    }
+  }
+
+  return account;
+}

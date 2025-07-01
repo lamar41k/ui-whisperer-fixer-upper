@@ -36,7 +36,7 @@ async function hmacSHA256(secret: string, data: string) {
   return toHex(signature);
 }
 
-// Build the signature per Phemex spec: HMAC_SHA256(path + query + expiry + body)
+// Build the signature per Phemex spec
 async function sign(path: string, queryString = '', body = '') {
   const apiSecret = Deno.env.get('PHEMEX_API_SECRET');
   if (!apiSecret) {
@@ -44,7 +44,8 @@ async function sign(path: string, queryString = '', body = '') {
   }
 
   const expiry = getExpiry();
-  const payload = path + queryString + expiry + body;
+  const signatureQuery = queryString.startsWith('?') ? queryString.substring(1) : queryString;
+  const payload = path + signatureQuery + expiry + body;
   const signature = await hmacSHA256(apiSecret, payload);
 
   return { expiry, signature };
@@ -65,81 +66,142 @@ serve(async (req) => {
 
     console.log('Fetching Phemex positions...');
 
-    // Try the positions endpoint with currency parameter first
-    const path = '/g-accounts/accountPositions';
-    const queryString = 'currency=USD';
+    // Try USDT futures positions first
+    const pathUsdt = '/g-accounts/accountPositions';
+    const queryStringEmpty = '';
     
-    console.log(`Making request to: ${path}?${queryString}`);
+    console.log(`Making request to USDT futures: ${pathUsdt}`);
     
-    const { expiry, signature } = await sign(path, queryString, '');
+    const { expiry: expiryUsdt, signature: signatureUsdt } = await sign(pathUsdt, queryStringEmpty, '');
     
-    const apiUrl = `https://api.phemex.com${path}?${queryString}`;
-    console.log(`Full URL: ${apiUrl}`);
-    console.log(`Signature payload: ${path}${queryString}${expiry}`);
+    const apiUrlUsdt = `https://api.phemex.com${pathUsdt}`;
     
-    const response = await fetch(apiUrl, {
+    const responseUsdt = await fetch(apiUrlUsdt, {
       method: 'GET',
       headers: {
         'x-phemex-access-token': apiKey,
-        'x-phemex-request-signature': signature,
-        'x-phemex-request-expiry': expiry.toString(),
+        'x-phemex-request-signature': signatureUsdt,
+        'x-phemex-request-expiry': expiryUsdt.toString(),
         'Content-Type': 'application/json',
       },
     });
 
-    const responseText = await response.text();
-    console.log(`Response Status: ${response.status}`);
-    console.log(`Response Body:`, responseText);
+    const responseTextUsdt = await responseUsdt.text();
+    console.log(`USDT Response Status: ${responseUsdt.status}`);
+    console.log(`USDT Response Body:`, responseTextUsdt);
 
-    // If we get a 400 error about missing currency, try without it
-    if (response.status === 400 && responseText.includes('currency')) {
-      console.log('Currency parameter not supported, trying without it...');
-      
-      const pathNoQuery = '/g-accounts/accountPositions';
-      const queryStringEmpty = '';
-      
-      const { expiry: expiry2, signature: signature2 } = await sign(pathNoQuery, queryStringEmpty, '');
-      
-      const apiUrl2 = `https://api.phemex.com${pathNoQuery}`;
-      console.log(`Trying without currency - Full URL: ${apiUrl2}`);
-      
-      const response2 = await fetch(apiUrl2, {
-        method: 'GET',
-        headers: {
-          'x-phemex-access-token': apiKey,
-          'x-phemex-request-signature': signature2,
-          'x-phemex-request-expiry': expiry2.toString(),
-          'Content-Type': 'application/json',
-        },
-      });
-
-      const responseText2 = await response2.text();
-      console.log(`Second attempt - Response Status: ${response2.status}`);
-      console.log(`Second attempt - Response Body:`, responseText2);
-
-      if (!response2.ok) {
-        console.error(`Second attempt failed: HTTP ${response2.status}`);
-        // Return empty positions instead of throwing error
-        console.log('No positions found or API not accessible, returning empty array');
-        return new Response(
-          JSON.stringify({ data: { positions: [] } }),
-          { 
-            headers: { 
-              ...corsHeaders, 
-              'Content-Type': 'application/json' 
-            } 
-          }
-        );
-      }
-
-      // Process the second response
-      let data2;
+    if (responseUsdt.ok) {
+      let dataUsdt;
       try {
-        data2 = JSON.parse(responseText2);
+        dataUsdt = JSON.parse(responseTextUsdt);
       } catch (e) {
-        console.error(`Failed to parse JSON from second attempt:`, responseText2);
+        console.error(`Failed to parse USDT JSON:`, responseTextUsdt);
+      }
+
+      if (dataUsdt && dataUsdt.code === 0) {
+        console.log(`USDT Success:`, JSON.stringify(dataUsdt, null, 2));
+        
+        // Process USDT positions
+        let positions = [];
+        if (dataUsdt.data && dataUsdt.data.positions && Array.isArray(dataUsdt.data.positions)) {
+          positions = dataUsdt.data.positions
+            .filter((pos: any) => pos.size && Math.abs(parseFloat(pos.size)) > 0)
+            .map((pos: any) => {
+              // USDT positions use Ev suffix with 8 decimal places
+              const scaleFactor = 100000000;
+              const priceScale = 10000; // USDT pairs typically use 4 decimal places for price
+              
+              return {
+                symbol: pos.symbol,
+                side: pos.side || (parseFloat(pos.size) > 0 ? 'Buy' : 'Sell'),
+                size: Math.abs(parseFloat(pos.size || '0')),
+                value: parseInt(pos.valueEv || '0') / scaleFactor,
+                entryPrice: parseInt(pos.avgEntryPriceEp || '0') / priceScale,
+                markPrice: parseInt(pos.markPriceEp || '0') / priceScale,
+                unrealisedPnl: parseInt(pos.unrealisedPnlEv || '0') / scaleFactor,
+                unrealisedPnlPcnt: parseFloat(pos.unrealisedPnlRr || '0') * 100,
+                leverage: parseFloat(pos.leverageRr || '1')
+              };
+            });
+        }
+
+        if (positions.length > 0) {
+          console.log('Final USDT Positions:', JSON.stringify(positions, null, 2));
+          
+          return new Response(
+            JSON.stringify({ data: { positions } }),
+            { 
+              headers: { 
+                ...corsHeaders, 
+                'Content-Type': 'application/json' 
+              } 
+            }
+          );
+        }
+      }
+    }
+
+    // Try coin-margined futures if USDT fails or has no positions
+    console.log('Trying coin-margined futures...');
+    const pathCoin = '/accounts/accountPositions';
+    
+    const { expiry: expiryCoin, signature: signatureCoin } = await sign(pathCoin, queryStringEmpty, '');
+    
+    const apiUrlCoin = `https://api.phemex.com${pathCoin}`;
+    
+    const responseCoin = await fetch(apiUrlCoin, {
+      method: 'GET',
+      headers: {
+        'x-phemex-access-token': apiKey,
+        'x-phemex-request-signature': signatureCoin,
+        'x-phemex-request-expiry': expiryCoin.toString(),
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const responseTextCoin = await responseCoin.text();
+    console.log(`Coin Response Status: ${responseCoin.status}`);
+    console.log(`Coin Response Body:`, responseTextCoin);
+
+    if (responseCoin.ok) {
+      let dataCoin;
+      try {
+        dataCoin = JSON.parse(responseTextCoin);
+      } catch (e) {
+        console.error(`Failed to parse coin JSON:`, responseTextCoin);
+      }
+
+      if (dataCoin && dataCoin.code === 0) {
+        console.log(`Coin Success:`, JSON.stringify(dataCoin, null, 2));
+        
+        // Process coin-margined positions
+        let positions = [];
+        if (dataCoin.data && dataCoin.data.positions && Array.isArray(dataCoin.data.positions)) {
+          positions = dataCoin.data.positions
+            .filter((pos: any) => pos.size && Math.abs(parseFloat(pos.size)) > 0)
+            .map((pos: any) => {
+              // Coin-margined contracts use different scaling
+              const priceScale = 10000; // 4 decimal places for price
+              const valueScale = pos.currency === 'USD' ? 10000 : 100000000;
+              
+              return {
+                symbol: pos.symbol,
+                side: pos.side || (parseFloat(pos.size) > 0 ? 'Buy' : 'Sell'),
+                size: Math.abs(parseFloat(pos.size || '0')),
+                value: parseInt(pos.valueEv || pos.valueRv || '0') / valueScale,
+                entryPrice: parseInt(pos.avgEntryPriceEp || pos.avgEntryPriceRp || '0') / priceScale,
+                markPrice: parseInt(pos.markPriceEp || pos.markPriceRp || '0') / priceScale,
+                unrealisedPnl: parseInt(pos.unrealisedPnlEv || pos.unrealisedPnlRv || '0') / valueScale,
+                unrealisedPnlPcnt: parseFloat(pos.unrealisedPnlRr || '0') * 100,
+                leverage: parseFloat(pos.leverageRr || '1')
+              };
+            });
+        }
+
+        console.log('Final Coin Positions:', JSON.stringify(positions, null, 2));
+        
         return new Response(
-          JSON.stringify({ data: { positions: [] } }),
+          JSON.stringify({ data: { positions } }),
           { 
             headers: { 
               ...corsHeaders, 
@@ -148,119 +210,12 @@ serve(async (req) => {
           }
         );
       }
-
-      if (data2.code !== 0) {
-        console.error(`Phemex API error ${data2.code}:`, data2);
-        return new Response(
-          JSON.stringify({ data: { positions: [] } }),
-          { 
-            headers: { 
-              ...corsHeaders, 
-              'Content-Type': 'application/json' 
-            } 
-          }
-        );
-      }
-
-      // Process positions from second attempt
-      let positions = [];
-      if (data2.data && data2.data.positions && Array.isArray(data2.data.positions)) {
-        positions = data2.data.positions
-          .filter((pos: any) => pos.size && parseFloat(pos.size) !== 0)
-          .map((pos: any) => ({
-            symbol: pos.symbol,
-            side: pos.side,
-            size: parseFloat(pos.size || '0'),
-            value: parseFloat(pos.value || '0'),
-            entryPrice: parseFloat(pos.avgEntryPrice || pos.entryPrice || '0'),
-            markPrice: parseFloat(pos.markPrice || '0'),
-            unrealisedPnl: parseFloat(pos.unrealizedPnl || pos.unrealisedPnl || '0'),
-            unrealisedPnlPcnt: parseFloat(pos.unrealizedPnlPcnt || pos.unrealisedPnlPcnt || '0')
-          }));
-      }
-
-      console.log('Final Positions Array (second attempt):', JSON.stringify(positions, null, 2));
-      
-      return new Response(
-        JSON.stringify({ data: { positions } }),
-        { 
-          headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json' 
-          } 
-        }
-      );
     }
 
-    if (!response.ok) {
-      console.error(`Failed: HTTP ${response.status}`);
-      // Return empty positions instead of throwing error
-      console.log('No positions found or API not accessible, returning empty array');
-      return new Response(
-        JSON.stringify({ data: { positions: [] } }),
-        { 
-          headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json' 
-          } 
-        }
-      );
-    }
-
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (e) {
-      console.error(`Failed to parse JSON:`, responseText);
-      return new Response(
-        JSON.stringify({ data: { positions: [] } }),
-        { 
-          headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json' 
-          } 
-        }
-      );
-    }
-
-    // Check for Phemex API error code
-    if (data.code !== 0) {
-      console.error(`Phemex API error ${data.code}:`, data);
-      return new Response(
-        JSON.stringify({ data: { positions: [] } }),
-        { 
-          headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json' 
-          } 
-        }
-      );
-    }
-
-    console.log(`Success:`, JSON.stringify(data, null, 2));
-
-    let positions = [];
-    
-    // Extract positions from response
-    if (data.data && data.data.positions && Array.isArray(data.data.positions)) {
-      positions = data.data.positions
-        .filter((pos: any) => pos.size && parseFloat(pos.size) !== 0) // Only include positions with non-zero size
-        .map((pos: any) => ({
-          symbol: pos.symbol,
-          side: pos.side,
-          size: parseFloat(pos.size || '0'),
-          value: parseFloat(pos.value || '0'),
-          entryPrice: parseFloat(pos.avgEntryPrice || pos.entryPrice || '0'),
-          markPrice: parseFloat(pos.markPrice || '0'),
-          unrealisedPnl: parseFloat(pos.unrealizedPnl || pos.unrealisedPnl || '0'),
-          unrealisedPnlPcnt: parseFloat(pos.unrealizedPnlPcnt || pos.unrealisedPnlPcnt || '0')
-        }));
-    }
-
-    console.log('Final Positions Array:', JSON.stringify(positions, null, 2));
-    
+    // If all attempts fail, return empty positions
+    console.log('No positions found on any endpoint');
     return new Response(
-      JSON.stringify({ data: { positions } }),
+      JSON.stringify({ data: { positions: [] } }),
       { 
         headers: { 
           ...corsHeaders, 
@@ -276,7 +231,7 @@ serve(async (req) => {
         error: error.message,
         info: {
           message: 'Unable to fetch positions. Check API key permissions.',
-          suggestion: 'Ensure your Phemex API key has the required permissions enabled.'
+          suggestion: 'Ensure your Phemex API key has futures trading permissions enabled.'
         }
       }),
       { 
