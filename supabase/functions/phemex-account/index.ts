@@ -26,7 +26,7 @@ serve(async (req) => {
 
     const client = new PhemexApiClient(apiKey);
     
-    // Try USDT futures account first - this is the main futures account
+    // Try USDT futures account first - this is where the main balance should be
     console.log('Trying USDT futures account...');
     const usdtResponse = await client.getUsdtFuturesAccount();
     const usdtResponseText = await usdtResponse.text();
@@ -94,7 +94,7 @@ serve(async (req) => {
       }
     }
 
-    // Fall back to spot wallets if futures accounts fail
+    // Only fall back to spot wallets if both futures accounts fail completely
     console.log('Both futures endpoints failed, trying spot wallet endpoint...');
     
     const spotResponse = await client.getSpotWallets();
@@ -106,7 +106,6 @@ serve(async (req) => {
     if (!spotResponse.ok) {
       console.log('All endpoints failed, returning basic account info...');
       
-      // Return basic account info with zero balance
       const account: PhemexAccount = {
         accountID: 0,
         currency: 'USDT',
@@ -128,7 +127,6 @@ serve(async (req) => {
       );
     }
 
-    // Process spot wallet response
     let spotData: PhemexSpotResponse;
     try {
       spotData = JSON.parse(spotResponseText);
@@ -144,7 +142,6 @@ serve(async (req) => {
 
     console.log(`Spot Success:`, JSON.stringify(spotData, null, 2));
 
-    // Process spot wallets and calculate total value
     const account = processSpotWallets(spotData.data);
     console.log('Final Spot Account Object:', JSON.stringify(account, null, 2));
     
@@ -173,7 +170,7 @@ serve(async (req) => {
   }
 });
 
-// Process USDT futures account data
+// Process USDT futures account data with correct scaling
 function processUsdtFuturesAccount(data: any): PhemexAccount {
   let account: PhemexAccount = {
     accountID: 0,
@@ -199,7 +196,7 @@ function processUsdtFuturesAccount(data: any): PhemexAccount {
       unrealisedPnl: parseInt(acc.totalUnrealisedPnlEv || '0') / scaleFactor
     };
   } else if (data.data && Array.isArray(data.data.accounts)) {
-    // Handle multiple accounts format
+    // Handle multiple accounts format - look for USDT account
     const usdtAccount = data.data.accounts.find((acc: any) => acc.currency === 'USDT');
     
     if (usdtAccount) {

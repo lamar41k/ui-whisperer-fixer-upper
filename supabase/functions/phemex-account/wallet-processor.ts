@@ -53,25 +53,37 @@ export function processAccountPositions(data: any): PhemexAccount {
     unrealisedPnl: 0
   };
 
-  // Try to extract balance from accounts array
-  if (data.data && data.data.accounts && Array.isArray(data.data.accounts)) {
+  // Process coin-margined futures account data
+  if (data.data && data.data.account) {
+    const acc = data.data.account;
+    console.log('Found coin futures account:', JSON.stringify(acc, null, 2));
+    
+    // Coin-margined uses different scaling - typically 8 decimal places for USDT values
+    const scaleFactor = 100000000;
+    
+    account = {
+      accountID: acc.accountId || acc.userID || 0,
+      currency: 'USDT',
+      totalEquity: (parseInt(acc.accountBalanceEv || '0') + parseInt(acc.totalUnrealisedPnlEv || '0')) / scaleFactor,
+      availableBalance: parseInt(acc.accountBalanceEv || '0') / scaleFactor,
+      unrealisedPnl: parseInt(acc.totalUnrealisedPnlEv || '0') / scaleFactor
+    };
+  } else if (data.data && Array.isArray(data.data.accounts)) {
+    // Handle multiple accounts format
     const usdtAccount = data.data.accounts.find((acc: any) => acc.currency === 'USDT' || acc.currency === 'USD');
     
     if (usdtAccount) {
-      console.log('Found USDT account:', JSON.stringify(usdtAccount, null, 2));
+      console.log('Found USDT account in accounts array:', JSON.stringify(usdtAccount, null, 2));
       
-      // Handle different balance field names and scaling
-      const totalBalance = usdtAccount.totalBalance || usdtAccount.balance || 0;
-      const availableBalance = usdtAccount.availableBalance || usdtAccount.available || 0;
-      const unrealisedPnl = usdtAccount.unrealizedPnl || usdtAccount.unrealisedPnl || 0;
+      // Use correct scaling factor for USDT
+      const scaleFactor = 100000000;
       
-      // Convert from Phemex's integer format (scale factor 1000000 for USDT)
       account = {
         accountID: usdtAccount.accountId || usdtAccount.id || 0,
         currency: usdtAccount.currency || 'USDT',
-        totalEquity: totalBalance / 1000000,
-        availableBalance: availableBalance / 1000000,
-        unrealisedPnl: unrealisedPnl / 1000000
+        totalEquity: (parseInt(usdtAccount.accountBalanceEv || '0') + parseInt(usdtAccount.totalUnrealisedPnlEv || '0')) / scaleFactor,
+        availableBalance: parseInt(usdtAccount.accountBalanceEv || '0') / scaleFactor,
+        unrealisedPnl: parseInt(usdtAccount.totalUnrealisedPnlEv || '0') / scaleFactor
       };
     }
   }
