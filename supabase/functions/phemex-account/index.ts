@@ -52,6 +52,34 @@ async function sign(path: string, queryString = '', body = '') {
   return { expiry, signature };
 }
 
+// Approximate USD values for major cryptocurrencies (you'd want to fetch real prices in production)
+const cryptoPriceEstimates: Record<string, number> = {
+  'BTC': 45000,
+  'ETH': 2500,
+  'XRP': 0.6,
+  'LINK': 15,
+  'ADA': 0.5,
+  'DOT': 7,
+  'MKR': 2500,
+  'SOL': 100,
+  'MATIC': 0.8,
+  'IMX': 1.5,
+  'INJ': 25,
+  'AVAX': 35,
+  'NEAR': 4,
+  'HNT': 6,
+  'SUI': 2,
+  'WIF': 2.5,
+  'TON': 5,
+  'JUP': 0.8,
+  'BLAST': 0.02,
+  'POL': 0.45,
+  'TRX': 0.1,
+  'USDT': 1,
+  'USDC': 1,
+  'USD': 1
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -178,27 +206,28 @@ serve(async (req) => {
           if (wallet.balanceEv && parseInt(wallet.balanceEv) > 0) {
             console.log(`Found ${wallet.currency} wallet with balance:`, wallet.balanceEv);
             
-            // Convert from Phemex's scaled format
-            // Most currencies use 8 decimal places (scale factor 100000000)
-            // USDT uses 8 decimal places as well
-            const scaleFactor = wallet.currency === 'USDT' || wallet.currency === 'USDC' ? 100000000 : 100000000;
+            // Convert from Phemex's scaled format (8 decimal places)
+            const scaleFactor = 100000000;
             const balance = parseInt(wallet.balanceEv) / scaleFactor;
             const locked = parseInt(wallet.lockedTradingBalanceEv || '0') / scaleFactor;
             
-            // For simplicity, assume 1:1 USD conversion for now
-            // In a real implementation, you'd want to fetch current exchange rates
-            if (wallet.currency === 'USDT' || wallet.currency === 'USDC' || wallet.currency === 'USD') {
-              totalEquityUSD += balance + locked;
-              availableBalanceUSD += balance;
-            }
+            // Get USD price estimate for this currency
+            const usdPrice = cryptoPriceEstimates[wallet.currency] || 0;
+            const balanceUSD = (balance + locked) * usdPrice;
+            const availableUSD = balance * usdPrice;
+            
+            console.log(`${wallet.currency}: ${balance + locked} tokens = $${balanceUSD.toFixed(2)} USD (price: $${usdPrice})`);
+            
+            totalEquityUSD += balanceUSD;
+            availableBalanceUSD += availableUSD;
           }
         });
         
         account = {
           accountID: 0,
           currency: 'USDT',
-          totalEquity: totalEquityUSD,
-          availableBalance: availableBalanceUSD,
+          totalEquity: Math.round(totalEquityUSD * 100) / 100,
+          availableBalance: Math.round(availableBalanceUSD * 100) / 100,
           unrealisedPnl: 0
         };
       }
